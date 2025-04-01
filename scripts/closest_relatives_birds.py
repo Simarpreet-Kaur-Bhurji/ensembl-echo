@@ -170,7 +170,10 @@ def get_proteins_from_taxid(tax_id, proteins, target, output_path, con):
     Returns:
         None
     """
-    file_name = target + '_relatives.fa'
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+
+    file_name = target[1] + '_relatives.fa'
     file_path = os.path.join(output_path, file_name)
     mode = "a" if os.path.isfile(file_path) else "w"
     
