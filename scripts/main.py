@@ -12,6 +12,14 @@ Modules:
 - process_clusters_module: Parses cluster file.
 - unique_taxon_ids_from_hcp_module: Parses HCP FASTA file and stores as a DuckDB table for easy access.
 - closest_taxonomic_relatives_module: Identifies closest taxonomic relatives within clusters for every target species.
+
+Example Command:
+time isrun -m 24gb -t 4d python main.py \
+    --num_of_rel 5 \
+    --species_path /hps/software/users/ensembl/compara/sbhurji/modenv/ensembl/main/ensembl-echo/scripts/birds_clustering/birds_query.csv \
+    --cluster_path /hps/software/users/ensembl/compara/sbhurji/modenv/ensembl/main/ensembl-echo/scripts/birds_clustering/alfatclust_birds_output/birds_cluster.txt \
+    --input_hcp_fasta /hps/software/users/ensembl/compara/sbhurji/modenv/ensembl/main/ensembl-echo/scripts/birds_clustering/birds_hcp_replaced_headers.fa \
+    --output_dir ranking_all
 """
 
 
