@@ -96,7 +96,7 @@ def calculate_taxonomic_distance(target_hcp_combinations, output_dir):
         os.makedirs(output_dir)
     output_file = os.path.join(output_dir, "ranked_taxa.json")
     
-    with open(output_file, 'w') as f:
+    with open(output_file, 'wb') as f:
         pickle.dump(sorted_taxa, f)
 
     print(f"Saved calculated taxonomic distances for every target species to {output_file}")

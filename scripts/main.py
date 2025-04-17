@@ -98,14 +98,15 @@ def main():
         hcp_tax_ids = parse_hcp_fasta(args.input_hcp_fasta)
         hcp_table = create_hcp_table(hcp_tax_ids, con)
         taxon_ids = get_hcp_tax_ids(con)
+        #print(len(taxon_ids))
         combinations = get_all_input_species_combinations(target_sps, taxon_ids)
         #print(combinations)
         # Uncomment the following line to calculate taxonomic distance.
-        #ranked_taxa = calculate_taxonomic_distance(combinations, args.output_dir)
+        ranked_taxa = calculate_taxonomic_distance(combinations, args.output_dir)
 
         # Once calculated, you can load the ranked taxa from a file for any following runs.
-        with open("ranked_taxa.json", "rb") as f:
-            ranked_taxa = pickle.load(f)
+        #with open("ranked_taxa.json", "rb") as f:
+        #    ranked_taxa = pickle.load(f)
 
         closest_neighbours = get_closest_rel_within_cluster(args.num_of_rel, target_sps, clusters, ranked_taxa, con, args.output_dir)
 

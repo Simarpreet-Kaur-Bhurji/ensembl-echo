@@ -174,7 +174,8 @@ def get_closest_rel_within_cluster(number_of_relatives, target_species, clusters
             - Identify the closest relatives based on the specified `number_of_relatives`.
             - Retrieve the protein sequences for the closest relatives using `get_proteins_from_taxid`.
     """
-    
+    log_data =[] 
+
     for cluster_id, proteins in clusters_dict.items():
         tax_id_of_protein = [int(p.split("_")[-1]) for p in proteins]
         unique_cluster_protein_tax_ids = list(dict.fromkeys(tax_id_of_protein))
@@ -191,3 +192,19 @@ def get_closest_rel_within_cluster(number_of_relatives, target_species, clusters
                 closest_relatives = distances[:number_of_relatives]
                 for i in closest_relatives:
                     get_proteins_from_taxid(i, proteins, target_name[1], output_dir, con)
+
+                log_data.append({
+                    "cluster_id": cluster_id,
+                    "target_species_name": target_name[0],
+                    "target_taxonomy_id": target_tax_id,
+                    "closest_relatives": closest_relatives
+                })
+
+    # Write log data to a TSV file
+    tsv_log_path = os.path.join(output_dir, "closest_relatives_log.tsv")
+    with open(tsv_log_path, "w") as tsv_file:
+        tsv_file.write("Cluster_ID\tTarget_Species_Name\tTarget_Taxonomy_ID\tClosest_Relatives\n")
+        for entry in log_data:
+            tsv_file.write(
+                f"{entry['cluster_id']}\t{entry['target_species_name']}\t{entry['target_taxonomy_id']}\t{','.join(map(str, entry['closest_relatives']))}\n"
+            )
