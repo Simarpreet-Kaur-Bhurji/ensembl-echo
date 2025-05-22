@@ -16,9 +16,9 @@ Modules:
 Example Command:
 time isrun -m 24gb -t 4d python main.py \
     --num_of_rel 5 \
-    --species_path /hps/software/users/ensembl/compara/sbhurji/modenv/ensembl/main/ensembl-echo/scripts/birds_clustering/birds_query.csv \
-    --cluster_path /hps/software/users/ensembl/compara/sbhurji/modenv/ensembl/main/ensembl-echo/scripts/birds_clustering/alfatclust_birds_output/birds_cluster.txt \
-    --input_hcp_fasta /hps/software/users/ensembl/compara/sbhurji/modenv/ensembl/main/ensembl-echo/scripts/birds_clustering/birds_hcp_replaced_headers.fa \
+    --species_path ../birds_clustering/birds_query.csv \
+    --cluster_path ../birds_clustering/alfatclust_birds_output/birds_cluster.txt \
+    --input_hcp_fasta ../birds_clustering/birds_hcp_replaced_headers.fa \
     --output_dir ranking_all
 """
 
