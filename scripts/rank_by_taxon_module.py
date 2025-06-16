@@ -40,7 +40,7 @@ def get_all_input_species_combinations(target_sps, hcp_taxon_ids):
         
     return target_hcp_combination
 
-local_cache_dir = "/hps/software/users/ensembl/compara/sbhurji/modenv/ensembl/main/ensembl-echo/scripts/prototype-material/ncbi_taxa/archives"
+local_cache_dir = "ncbi_taxa/archives"
 ncbi_taxa_hub = NCBITaxonHub(local_cache_dir)
 
 def calculate_taxonomic_distance(target_hcp_combinations, output_dir):
