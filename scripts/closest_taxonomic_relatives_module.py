@@ -123,7 +123,7 @@ def get_distance_for_all_proteins(
     return sorted_distances
 
 
-def get_proteins_from_taxid(tax_id, proteins, target, output_path, con):
+def get_proteins_from_taxid(tax_id, proteins, query_name, output_path, con):
     """
     Get proteins from a given taxonomy ID and write their sequences to an output file.
 
@@ -140,7 +140,8 @@ def get_proteins_from_taxid(tax_id, proteins, target, output_path, con):
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
-    file_name = f"{target}_relatives.fa"
+    query = query_name.lower().replace(" ", "_")
+    file_name = f"{query}_relatives.fa"
     file_path = os.path.join(output_path, file_name)
     mode = "a" if os.path.isfile(file_path) else "w"
 
@@ -306,13 +307,13 @@ def get_closest_rel_within_cluster(
                 closest_relatives = ranked_closest_relatives[:number_of_relatives]
                 for i in closest_relatives:
                     get_proteins_from_taxid(
-                        i, proteins, target_name[1], output_dir, con
+                        i, proteins, target_name, output_dir, con
                     )
 
                 log_data.append(
                     {
                         "cluster_id": cluster_id,
-                        "target_species_name": target_name[0],
+                        "target_species_name": target_name,
                         "target_taxonomy_id": target_tax_id,
                         "closest_relatives": closest_relatives,
                     }
