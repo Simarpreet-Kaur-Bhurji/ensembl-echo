@@ -1,3 +1,30 @@
+"""
+main.py
+
+This script processes input protein sequences from either a High Confidence Protein (HCP) FASTA file 
+or a directory of FASTA files, generates clusters using MMseqs2, and identifies the closest 
+taxonomic relatives for a set of query species within each cluster.
+
+Functionality includes:
+- Combining multiple FASTA files into a single file with standardized headers.
+- Generating a metadata TSV and Parquet file with sequence information, scientific names, and tax IDs.
+- Running MMseqs2 to cluster proteins and parsing cluster outputs into dictionaries.
+- Calculating ranked taxa based on taxonomic distances.
+- Mapping query species to the closest relatives within protein clusters.
+- Appending clusters with fewer tax IDs to all relative output files.
+
+Command-line arguments:
+- --num_of_rel: Number of closest taxonomic relatives to identify per species.
+- --query_species: Path to query species file (tax_id, species name, production name).
+- --output_dir: Directory to store outputs (default: "output").
+- --input_hcp_fasta / --input_fasta_dir: Input HCP FASTA file or path to directory of FASTA files.
+- --metadata_tsv: Required if using a FASTA directory; provides species metadata (Scientific name, Taxon id).
+- MMseqs2 options: --min_seq_id, --coverage, --cov_mode, --threads, --singularity_image
+
+This script relies on several helper modules for processing metadata, parsing FASTA files, 
+generating clusters, and calculating taxonomic distances.
+"""
+
 import argparse
 import duckdb
 import pickle
