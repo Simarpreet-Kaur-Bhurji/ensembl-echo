@@ -1,7 +1,7 @@
 """
 process_input_species_module.py
 
-This module provides functionality to process the input species file and extract relevant data.
+This script provides functionality to process the input species file and extract relevant data.
 
 Functions:
 - get_input_sps: Reads a CSV file containing species information and converts it into a dictionary.

@@ -41,6 +41,7 @@ def get_all_input_species_combinations(target_sps, hcp_taxon_ids):
     return target_hcp_combination
 
 local_cache_dir = "ncbi_taxa/archives"
+
 ncbi_taxa_hub = NCBITaxonHub(local_cache_dir)
 
 def calculate_taxonomic_distance(target_hcp_combinations, output_dir):
@@ -83,7 +84,8 @@ def calculate_taxonomic_distance(target_hcp_combinations, output_dir):
                     distance_species_1 = len(species_1_lineage) - common_lineage_length
                     distance_species_2 = len(species_2_lineage) - common_lineage_length
                     total_distance = distance_species_1 + distance_species_2
-                    taxa_distance[k][pair] = (total_distance, lca)
+                    if total_distance > 0:
+                        taxa_distance[k][pair] = (total_distance, lca)
 
     #print(taxa_distance)           
     # Sort each inner dict by distance
