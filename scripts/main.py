@@ -3,7 +3,10 @@ import duckdb
 import pickle
 import os
 
-from rank_by_taxon_module import get_all_input_species_combinations, calculate_taxonomic_distance
+from rank_by_taxon_module import (
+    get_all_input_species_combinations,
+    calculate_taxonomic_distance,
+)
 from process_input_species_module import get_input_sps
 from generate_input_tsv import *
 from parse_hcp_fasta import parse_hcp_fasta
@@ -69,6 +72,7 @@ def load_or_calculate_ranked_taxa(combinations, output_dir):
             return pickle.load(f)
     return calculate_taxonomic_distance(combinations, output_dir)
 
+
 def append_to_relatives(output_dir):
     """
     Append the contents of 'clusters_with_fewer_tax_ids.fa' to all
@@ -102,48 +106,55 @@ def main():
     7. Append clusters with fewer tax IDs to relative files.
     """
     parser = argparse.ArgumentParser(
-        description='Processes input species, clusters, and HCP data to calculate taxonomic relationships.'
+        description="Processes input species, clusters, and HCP data to calculate taxonomic relationships."
     )
     parser.add_argument(
-        '--num_of_rel',
+        "--num_of_rel",
         type=int,
         required=True,
-        help='Number of closest taxonomic relatives to identify for each target species.'
+        help="Number of closest taxonomic relatives to identify for each target species.",
     )
     parser.add_argument(
-        '--query_species',
+        "--query_species",
         type=str,
         required=True,
-        help='Path to the file containing query species taxonomy id, species name and production name.'
+        help="Path to the file containing query species taxonomy id, species name and production name.",
     )
     parser.add_argument(
-        '--output_dir',
+        "--output_dir",
         type=str,
         default="output",
-        help='Directory to store the output files. Defaults to "output".'
+        help='Directory to store the output files. Defaults to "output".',
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
-        '--input_hcp_fasta',
+        "--input_hcp_fasta",
         type=str,
-        help='Path to High Confidence Protein FASTA file (taxonomy id in headers).'
+        help="Path to High Confidence Protein FASTA file (taxonomy id in headers).",
     )
     group.add_argument(
-        '--input_fasta_dir',
+        "--input_fasta_dir",
         type=str,
-        help='Directory containing FASTA files for processing. Provide metadata_tsv if using this option.'
+        help="Directory containing FASTA files for processing. Provide metadata_tsv if using this option.",
     )
     parser.add_argument(
-        '--metadata_tsv',
+        "--metadata_tsv",
         type=str,
-        help='Species metadata TSV (required if --input_fasta_dir is used).'
+        help="Species metadata TSV (required if --input_fasta_dir is used).",
     )
-    parser.add_argument("--min_seq_id", type=float, default=0.75, help="Minimum sequence identity")
-    parser.add_argument("--coverage", type=float, default=0.8, help="Coverage threshold")
+    parser.add_argument(
+        "--min_seq_id", type=float, default=0.75, help="Minimum sequence identity"
+    )
+    parser.add_argument(
+        "--coverage", type=float, default=0.8, help="Coverage threshold"
+    )
     parser.add_argument("--cov_mode", type=int, default=1, help="Coverage mode")
     parser.add_argument("--threads", type=int, default=16, help="Number of threads")
-    parser.add_argument("--singularity_image", default="/hps/nobackup/flicek/ensembl/compara/jitender/containers/mmseqs2_latest.sif",
-                        help="Path to MMseqs Singularity image")
+    parser.add_argument(
+        "--singularity_image",
+        default="/hps/nobackup/flicek/ensembl/compara/jitender/containers/mmseqs2_latest.sif",
+        help="Path to MMseqs Singularity image",
+    )
 
     args = parser.parse_args()
 
@@ -164,7 +175,7 @@ def main():
                 coverage=args.coverage,
                 cov_mode=args.cov_mode,
                 threads=args.threads,
-                singularity_image=args.singularity_image
+                singularity_image=args.singularity_image,
             )
             clusters = parse_cluster_file(cluster_file)
     elif args.input_hcp_fasta:
@@ -180,13 +191,20 @@ def main():
                 coverage=args.coverage,
                 cov_mode=args.cov_mode,
                 threads=args.threads,
-                singularity_image=args.singularity_image
+                singularity_image=args.singularity_image,
             )
             clusters = parse_cluster_file(cluster_file)
 
     # Connect to DuckDB and process metadata
     con = duckdb.connect()
-    metadata_pq_file = next((os.path.join(args.output_dir, f) for f in os.listdir(args.output_dir) if f.endswith(".parquet")), None)
+    metadata_pq_file = next(
+        (
+            os.path.join(args.output_dir, f)
+            for f in os.listdir(args.output_dir)
+            if f.endswith(".parquet")
+        ),
+        None,
+    )
     create_hcp_table(metadata_pq_file, con)
     query_sps = get_input_sps(args.query_species)
     taxon_ids = get_hcp_tax_ids(con)
@@ -196,10 +214,11 @@ def main():
     ranked_taxa = load_or_calculate_ranked_taxa(combinations, args.output_dir)
 
     # Get closest relatives
-    get_closest_rel_within_cluster(args.num_of_rel, query_sps, clusters, ranked_taxa, con, args.output_dir)
+    get_closest_rel_within_cluster(
+        args.num_of_rel, query_sps, clusters, ranked_taxa, con, args.output_dir
+    )
     append_to_relatives(args.output_dir)
 
 
 if __name__ == "__main__":
     main()
-

@@ -3,6 +3,7 @@ import argparse
 import csv
 import pandas as pd
 
+
 def write_sequence(out_f, header, seq, combined):
     """
     Writes a sequence to the combined FASTA file with header length.
@@ -13,7 +14,7 @@ def write_sequence(out_f, header, seq, combined):
     combined.append((header_with_len, seq))
     out_f.write(f">{header_with_len}\n")
     for i in range(0, seq_len, 80):
-        out_f.write(seq[i:i+80] + "\n")
+        out_f.write(seq[i : i + 80] + "\n")
 
 
 def process_fasta_file(filepath, prefix, out_f, combined):
@@ -56,6 +57,7 @@ def combine_fastas(input_fasta_dir, combined_fasta_file):
                 process_fasta_file(filepath, prefix, out_f, combined)
     return combined
 
+
 def load_species_info(tsv_file):
     mapping = {}
     with open(tsv_file, newline="") as f:
@@ -63,12 +65,18 @@ def load_species_info(tsv_file):
         headers = reader.fieldnames
         for row in reader:
             sci_name = row["Scientific name"].strip()
-            norm_name = sci_name.lower().replace(" ", "_")   # e.g. "Octopus rubescens" -> "octopus_rubescens"
+            norm_name = sci_name.lower().replace(
+                " ", "_"
+            )  # e.g. "Octopus rubescens" -> "octopus_rubescens"
             mapping[norm_name] = {
                 "scientific_name": sci_name,
                 "tax_id": row.get("Species taxon_id", "NA"),
-                "confidence_score": row.get("confidence score", "NA") if "confidence score" in headers else "NA",
-                "confidence_level": row.get("confidence level", "NA") if "confidence level" in headers else "NA"
+                "confidence_score": row.get("confidence score", "NA")
+                if "confidence score" in headers
+                else "NA",
+                "confidence_level": row.get("confidence level", "NA")
+                if "confidence level" in headers
+                else "NA",
             }
     return mapping
 
@@ -82,12 +90,15 @@ def header_to_species_key(header):
         species_part = header.split("|")[1]  # second field is species prefix
     except IndexError:
         species_part = "unknown"
-    
+
     # Split on '_gca' if present, otherwise take the full string
-    species_base = species_part.split("_gca")[0] if "_gca" in species_part else species_part
+    species_base = (
+        species_part.split("_gca")[0] if "_gca" in species_part else species_part
+    )
 
     parts = species_base.split("_")
     return "_".join(parts[:2]).lower()
+
 
 def write_protein_metadata(combined_fasta, species_map, output_tsv):
     """
@@ -101,21 +112,23 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv):
 
     with open(output_tsv, "w", newline="") as out:
         writer = csv.writer(out, delimiter="\t")
-        writer.writerow([
-            "protein_id",
-            "scientific_name",
-            "sequence_length",
-            "tax_id",
-            "confidence_score",
-            "confidence_level"
-        ])
+        writer.writerow(
+            [
+                "protein_id",
+                "scientific_name",
+                "sequence_length",
+                "tax_id",
+                "confidence_score",
+                "confidence_level",
+            ]
+        )
 
         for header, seq in combined_fasta:
             parts = header.split("|")
             if len(parts) < 3:
                 raise ValueError(f"Header not in expected format: {header}")
 
-            protein_id = parts[0]  
+            protein_id = parts[0]
             seq_len_str = parts[-1]
             if not seq_len_str.isdigit():
                 seq_len = len(seq)
@@ -124,40 +137,56 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv):
 
             # Normalize species for lookup
             species_key = header_to_species_key(header)
-            info = species_map.get(species_key, {
-                "scientific_name": "NA",
-                "tax_id": "NA",
-                "confidence_score": "NA",
-                "confidence_level": "NA"
-            })
+            info = species_map.get(
+                species_key,
+                {
+                    "scientific_name": "NA",
+                    "tax_id": "NA",
+                    "confidence_score": "NA",
+                    "confidence_level": "NA",
+                },
+            )
 
             # Write TSV row
-            writer.writerow([
-                protein_id,
-                info["scientific_name"],
-                seq_len,
-                info["tax_id"],
-                info["confidence_score"],
-                info["confidence_level"]
-            ])
+            writer.writerow(
+                [
+                    protein_id,
+                    info["scientific_name"],
+                    seq_len,
+                    info["tax_id"],
+                    info["confidence_score"],
+                    info["confidence_level"],
+                ]
+            )
 
             # Collect row for Parquet
-            rows.append([
-                header,
-                seq,
-                protein_id,
-                info["scientific_name"],
-                info["tax_id"],
-                info["confidence_score"],
-                info["confidence_level"],
-                seq_len
-            ])
+            rows.append(
+                [
+                    header,
+                    seq,
+                    protein_id,
+                    info["scientific_name"],
+                    info["tax_id"],
+                    info["confidence_score"],
+                    info["confidence_level"],
+                    seq_len,
+                ]
+            )
 
     # Write Parquet with sequence included
     parquet_file = os.path.splitext(output_tsv)[0] + ".parquet"
-    df = pd.DataFrame(rows, columns=[
-        "header", "sequence", "protein_id", "scientific_name",
-        "tax_id", "confidence_score", "confidence_level", "sequence_length"
-    ])
+    df = pd.DataFrame(
+        rows,
+        columns=[
+            "header",
+            "sequence",
+            "protein_id",
+            "scientific_name",
+            "tax_id",
+            "confidence_score",
+            "confidence_level",
+            "sequence_length",
+        ],
+    )
     df.to_parquet(parquet_file, index=False)
     print(f"Parquet file (with sequences) written to: {parquet_file}")

@@ -7,9 +7,16 @@ from collections import defaultdict
 import glob
 import json
 
-def run_mmseqs(input_fasta, output_dir,
-               min_seq_id=0.75, coverage=0.8, cov_mode=1, threads=16,
-               singularity_image="/hps/nobackup/flicek/ensembl/compara/jitender/containers/mmseqs2_latest.sif"):
+
+def run_mmseqs(
+    input_fasta,
+    output_dir,
+    min_seq_id=0.75,
+    coverage=0.8,
+    cov_mode=1,
+    threads=16,
+    singularity_image="/hps/nobackup/flicek/ensembl/compara/jitender/containers/mmseqs2_latest.sif",
+):
     """
     Run MMseqs2 easy-cluster using Singularity and return the cluster file path.
     """
@@ -21,16 +28,22 @@ def run_mmseqs(input_fasta, output_dir,
     os.makedirs(tmp_dir, exist_ok=True)
 
     cmd = [
-        "singularity", "exec",
+        "singularity",
+        "exec",
         singularity_image,
-        "mmseqs", "easy-cluster",
+        "mmseqs",
+        "easy-cluster",
         input_fasta,
         output_prefix,
         tmp_dir,
-        "--min-seq-id", str(min_seq_id),
-        "-c", str(coverage),
-        "--cov-mode", str(cov_mode),
-        "--threads", str(threads)
+        "--min-seq-id",
+        str(min_seq_id),
+        "-c",
+        str(coverage),
+        "--cov-mode",
+        str(cov_mode),
+        "--threads",
+        str(threads),
     ]
 
     print("Running command:")
@@ -70,8 +83,10 @@ def parse_cluster_file(cluster_file):
             raise ValueError(f"Duplicate protein IDs found in cluster {cluster_id}")
 
     # Convert to alfatclust style dictionary (#Cluster N)
-    alfatclust_dict = {f"#Cluster {k}": members
-                       for k, (_, members) in enumerate(cluster_pool.items(), start=1)}
+    alfatclust_dict = {
+        f"#Cluster {k}": members
+        for k, (_, members) in enumerate(cluster_pool.items(), start=1)
+    }
 
     print(f"Parsed {len(alfatclust_dict)} clusters from {cluster_file}")
 
