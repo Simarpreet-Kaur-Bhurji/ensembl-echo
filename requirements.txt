@@ -1,0 +1,12 @@
+# Python environment
+python>=3.10
+
+# Core Python packages
+duckdb==1.1.3
+pandas==2.2.3
+pysam==0.21.0
+
+# External dependency
+# MMseqs2 must be available either via Singularity image or native installation
+# Not installable via pip – install separately
+
