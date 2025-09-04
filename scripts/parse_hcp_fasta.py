@@ -24,7 +24,7 @@ def parse_hcp_fasta(input_pep_files, outdir):
         seq_len = len(sequence)
         split_header = header.split("|")
         protein_id = split_header[0]
-        name = split_header[2]
+        name = split_header[2].replace("_", "")
         tax_id = split_header[4]
         # gene_quality = split_header[-1]
         confidence_level = split_header[-1]

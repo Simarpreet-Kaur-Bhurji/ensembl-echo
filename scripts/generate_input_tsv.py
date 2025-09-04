@@ -69,7 +69,7 @@ def load_species_info(tsv_file):
                 " ", "_"
             )  # e.g. "Octopus rubescens" -> "octopus_rubescens"
             mapping[norm_name] = {
-                "scientific_name": sci_name,
+                "name": sci_name,
                 "tax_id": row.get("Species taxon_id", "NA"),
                 "confidence_score": row.get("confidence score", "NA")
                 if "confidence score" in headers
@@ -115,7 +115,7 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv):
         writer.writerow(
             [
                 "protein_id",
-                "scientific_name",
+                "name",
                 "sequence_length",
                 "tax_id",
                 "confidence_score",
@@ -140,7 +140,7 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv):
             info = species_map.get(
                 species_key,
                 {
-                    "scientific_name": "NA",
+                    "name": "NA",
                     "tax_id": "NA",
                     "confidence_score": "NA",
                     "confidence_level": "NA",
@@ -151,7 +151,7 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv):
             writer.writerow(
                 [
                     protein_id,
-                    info["scientific_name"],
+                    info["name"],
                     seq_len,
                     info["tax_id"],
                     info["confidence_score"],
@@ -165,7 +165,7 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv):
                     header,
                     seq,
                     protein_id,
-                    info["scientific_name"],
+                    info["name"],
                     info["tax_id"],
                     info["confidence_score"],
                     info["confidence_level"],
@@ -181,7 +181,7 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv):
             "header",
             "sequence",
             "protein_id",
-            "scientific_name",
+            "name",
             "tax_id",
             "confidence_score",
             "confidence_level",

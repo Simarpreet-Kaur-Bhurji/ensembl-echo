@@ -148,13 +148,14 @@ def get_proteins_from_taxid(tax_id, proteins, query_name, output_path, con):
     with open(file_path, mode) as file:
         for j in proteins:
             # Query hcp_table for this protein and tax_id
-
+            split_header = j.split("|")
+            prot_id = split_header[0]
             query = """
                 SELECT header, sequence 
                 FROM hcp_table 
-                WHERE header = ? AND tax_id = ?
+                WHERE protein_id = ? AND tax_id = ?
             """
-            result = con.execute(query, (j, tax_id)).fetchdf()
+            result = con.execute(query, (prot_id, tax_id)).fetchdf()
 
             if not result.empty:
                 header = result["header"].values[0]

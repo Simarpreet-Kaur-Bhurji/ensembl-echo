@@ -6,6 +6,7 @@ import os
 from collections import defaultdict
 import glob
 import json
+import time
 
 
 def run_mmseqs(
@@ -48,8 +49,15 @@ def run_mmseqs(
 
     print("Running command:")
     print(" ".join(cmd))
+
+    start_time = time.time()
     subprocess.run(cmd, check=True)
-    print(f"MMseqs2 clustering completed. Results stored in: {output_dir}")
+    end_time = time.time()
+
+    elapsed_time = end_time - start_time
+    minutes, seconds = divmod(int(elapsed_time), 60)
+    print(f"MMseqs2 clustering completed in {minutes} min {seconds} sec. Results stored in: {output_dir}")
+
 
     # Return the full path to the cluster file
     cluster_file = f"{output_prefix}_cluster.tsv"
