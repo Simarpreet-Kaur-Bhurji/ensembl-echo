@@ -184,7 +184,7 @@ def break_taxonomic_ties(sorted_distances, proteins, con):
     prot_ids = [p.split("|")[0].strip() for p in proteins]
     placeholders = ",".join("?" for _ in prot_ids)
     query = f"""
-        SELECT protein_id, tax_id, confidence_level, sequence_length
+        SELECT protein_id, tax_id, confidence_level, seq_len
         FROM hcp_table
         WHERE protein_id IN ({placeholders})
     """
@@ -207,25 +207,25 @@ def break_taxonomic_ties(sorted_distances, proteins, con):
         if all(merged_df["confidence_level"] == "NA"):
             # Sort by distance and sequence length only
             merged_df = merged_df.sort_values(
-                by=["distance", "sequence_length"], ascending=[True, False]
+                by=["distance", "seq_len"], ascending=[True, False]
             )
         else:
             # Sort by distance, sequence length, and confidence level
             merged_df = merged_df.sort_values(
-                by=["distance", "sequence_length", "confidence_level"],
+                by=["distance", "seq_len", "confidence_level"],
                 ascending=[True, False, True],
             )
     else:
         # Sort by distance and sequence length only
         merged_df = merged_df.sort_values(
-            by=["distance", "sequence_length"], ascending=[True, False]
+            by=["distance", "seq_len"], ascending=[True, False]
         )
 
     # Drop duplicates based on tax_id, keeping the first occurrence
     final_df = merged_df.drop_duplicates(subset="tax_id", keep="first")
 
     return final_df[
-        ["protein_id", "tax_id", "distance", "sequence_length", "confidence_level"]
+        ["protein_id", "tax_id", "distance", "seq_len", "confidence_level"]
     ]
 
 

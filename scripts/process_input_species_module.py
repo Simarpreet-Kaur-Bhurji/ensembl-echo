@@ -34,7 +34,7 @@ def get_input_sps(file_path):
     print(df)
     for _, row in df.iterrows():
         key = row[0]
-        value = (row[1], row[2])
+        value = row[1]
         all_species[key] = value
 
     return all_species

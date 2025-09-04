@@ -185,7 +185,7 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv):
             "tax_id",
             "confidence_score",
             "confidence_level",
-            "sequence_length",
+            "seq_len",
         ],
     )
     df.to_parquet(parquet_file, index=False)
