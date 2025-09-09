@@ -31,7 +31,7 @@ import pickle
 import os
 import time
 
-from new_rank_by_taxon_module import (
+from rank_by_taxon_module import (
     get_all_input_species_combinations,
     calculate_taxonomic_distance,
 )
@@ -40,7 +40,7 @@ from generate_input_tsv import *
 from parse_hcp_fasta import parse_hcp_fasta
 from parse_metadata_parquet import create_hcp_table, get_hcp_tax_ids
 from generate_clusters import run_mmseqs, parse_cluster_file
-from new_closest_taxonomic_relatives_module import get_closest_rel_within_cluster
+from closest_taxonomic_relatives_module import get_closest_rel_within_cluster
 from diagnostics import get_diagnostic_stats_and_plots
 
 
@@ -142,7 +142,7 @@ def append_to_relatives(output_dir):
         cluster_content = cf.read()
 
     # Prepare all_queries_combined_relatives.fa
-    combined_path = os.path.join(output_dir, "all_queries_combined_relatives.fa")
+    combined_path = os.path.join(output_dir, "all_queries_relatives_combined.fa")
     with open(combined_path, "w") as combined_out:
         for fname in os.listdir(output_dir):
             if fname.endswith("_relatives.fa") and not fname.endswith(

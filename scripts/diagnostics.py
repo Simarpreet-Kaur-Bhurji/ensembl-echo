@@ -216,11 +216,11 @@ def echo_pipeline_summary(output_dir, input_fasta_file):
     singletons_count = get_total_sequences(singletons_file)
     
     # Count clusters with fewer tax IDs
-    clusters_fewer_file = os.path.join(output_dir, "clusters_with_fewer_tax_ids.fa")
+    clusters_fewer_file = os.path.join(output_dir, ".clusters_with_fewer_tax_ids.fa")
     clusters_fewer_count = get_total_sequences(clusters_fewer_file)
     
     #All queris combined file number of sequences
-    all_queries_combined_file = os.path.join(output_dir, "all_queries_combined_relatives.fa")
+    all_queries_combined_file = os.path.join(output_dir, "all_queries_relatives_combined.fa")
     all_queries_combined_count = get_total_sequences(all_queries_combined_file)
 
     # Compute percentages
@@ -352,7 +352,6 @@ def get_diagnostic_stats_and_plots(input_fasta_file, output_dir):
         "cluster_by_taxids": cluster_by_taxids,
         "summary_stats": summary_stats
     }
-
 
 
 
