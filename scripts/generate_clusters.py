@@ -56,9 +56,20 @@ def run_mmseqs(
 
     elapsed_time = end_time - start_time
     minutes, seconds = divmod(int(elapsed_time), 60)
-    print(f"MMseqs2 clustering completed in {minutes} min {seconds} sec. Results stored in: {output_dir}")
 
+    runtime_message = (
+        f"MMseqs2 clustering completed in {minutes} min {seconds} sec.\n"
+        f"Results stored in: {output_dir}\n"
+    )
+    summary_file = os.path.join(output_dir, "cluster_summary.txt")
 
+    # Append to cluster_summary.txt
+    mode = "a" if os.path.exists(summary_file) else "w"
+    with open(summary_file, mode) as f:
+        f.write("\n")
+        f.write("Cluster Summary Report\n")
+        f.write("======================\n\n")
+        f.write(runtime_message)
     # Return the full path to the cluster file
     cluster_file = f"{output_prefix}_cluster.tsv"
     return cluster_file

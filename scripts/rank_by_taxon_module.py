@@ -1,112 +1,118 @@
-"""
-rank_by_taxon_module.py
-
-This module provides functionality to calculate taxonomic distances between species 
-and generate all possible combinations of target species and HCP taxon IDs.
-
-Functions:
-- get_all_input_species_combinations: Generates all combinations of target species and HCP taxon IDs.
-- calculate_taxonomic_distance: Calculates taxonomic distances between species pairs using NCBI TaxonHub.
-
-Dependencies:
-- NCBITaxonHub: Used to access taxonomic data and calculate distances.
-- collections.defaultdict: Used to store taxonomic distances in a nested dictionary.
-- pickle, os: Used for file handling and local cache management.
-"""
-
-from prototype_material.hub import NCBITaxonHub
+from ete3 import NCBITaxa
 from collections import defaultdict
 import pickle
 import os
 
+ncbi = NCBITaxa(dbfile="~/.etetoolkit/taxa.sqlite")
+# ncbi.update_taxonomy_database()
 
-def get_all_input_species_combinations(target_sps, hcp_taxon_ids):
+
+def get_all_input_species_combinations(query_sps, hcp_taxon_ids):
+    query_hcp_combination = {}
+    query_taxon_ids = list(query_sps.keys())
+    print("Query Taxon IDs:", query_taxon_ids)
+
+    for i in query_taxon_ids:
+        query_hcp_combination[int(i)] = [(int(i), int(qid)) for qid in hcp_taxon_ids]
+
+    return query_hcp_combination
+
+
+def is_valid_taxid(taxid):
+    taxid = int(taxid)
+    try:
+        valid = taxid in ncbi.get_taxid_translator([taxid])
+    except Exception:
+        valid = False
+    return valid
+
+
+def get_lca_from_lineages(lineage_1, lineage_2):
+    common = set(lineage_1) & set(lineage_2)
+    if not common:
+        return None
+    # the deepest (closest to leaves) is the one with the largest index in lineage
+    return max(
+        common, key=lambda taxid: max(lineage_1.index(taxid), lineage_2.index(taxid))
+    )
+
+
+def calculate_taxonomic_distance(query_hcp_combinations, output_dir):
     """
-    Generate all combinations of target species and HCP taxon IDs.
+    Calculate taxonomic distances between species pairs using ete3.NCBITaxa.
 
     Args:
-        target_sps (dict): A dictionary where keys are target species taxon IDs and
-                    values are a tuple of speceis name and production name.
-        hcp_taxon_ids (list): A list of unique taxon IDs present in high confidence protein file.
+        query_hcp_combinations (dict): Keys are query species taxon IDs,
+                                        values are lists of tuples (query_taxid, hcp_taxid)
+        output_dir (str): Directory where output pickle will be saved.
 
     Returns:
-        dict: A dictionary where keys are target species taxon IDs, and values are
-              lists of tuples representing all pairs of combinations of target species and HCP taxon IDs.
-    """
-    target_hcp_combination = dict()
-    target_taxon_ids = list(target_sps.keys())
-    print("Target Taxon IDs:", target_taxon_ids)
-    for i in target_taxon_ids:
-        target_hcp_combination[int(i)] = [(int(i), int(qid)) for qid in hcp_taxon_ids]
-
-    return target_hcp_combination
-
-
-local_cache_dir = "ncbi_taxa/archives"
-
-ncbi_taxa_hub = NCBITaxonHub(local_cache_dir)
-
-
-def calculate_taxonomic_distance(target_hcp_combinations, output_dir):
-    """
-    Calculate taxonomic distances between species pairs using NCBI TaxonHub.
-
-    Args:
-        target_hcp_combinations (dict): A dictionary where keys are target species taxon IDs,
-                                        and values are lists of tuples representing species pairs.
-        output_dir (str): Path to the directory where the output will be saved.
-
-    Returns:
-        defaultdict: A sorted nested dictionary where the outer keys are target species taxon IDs,
-                     inner keys are the species pair taxon IDs, and values are taxonomic distances.
-
-        Example:
+        defaultdict: Sorted nested dictionary:
         {
-            9606: { #This is the taxon id of target species
-                (9606, 10090): (3, 9605), #First tuple is the pair of taxon ids for which distance is being calculated
-                (9606, 10116): (4, 9605), #Second tuple has the first element as taxonomic distance and second element
-                as the last common ancestor taxon id
+            query_taxid: {
+                (query_taxid, hcp_taxid): (total_distance, lca_taxid),
                 ...
             },
-           }
+            ...
+        }
     """
-
     taxa_distance = defaultdict(dict)
 
-    for k, v in target_hcp_combinations.items():
-        for pair in v:
-            species_1 = pair[0]
-            species_2 = pair[1]
-            if species_1 != species_2:
-                with ncbi_taxa_hub.taxon_db("2025-02-01") as ncbi_taxon_db:
-                    species_1_lineage = ncbi_taxon_db.lineage_ids(species_1)
-                    species_2_lineage = ncbi_taxon_db.lineage_ids(species_2)
-                    common_lineage = ncbi_taxon_db.common_lineage_ids(
-                        [species_1, species_2]
-                    )
-                    lca = ncbi_taxon_db.last_common_taxon_id([species_1, species_2])
-                    common_lineage_length = len(common_lineage)
-                    distance_species_1 = len(species_1_lineage) - common_lineage_length
-                    distance_species_2 = len(species_2_lineage) - common_lineage_length
-                    total_distance = distance_species_1 + distance_species_2
-                    if total_distance > 0:
-                        taxa_distance[k][pair] = (total_distance, lca)
+    for query_taxid, pairs in query_hcp_combinations.items():
+        if not is_valid_taxid(query_taxid):
+            print(f"Skipping taxid {query_taxid} because it is invalid")
+            continue
 
-    # print(taxa_distance)
-    # Sort each inner dict by distance
-    sorted_taxa = {
-        k: dict(sorted(inner.items(), key=lambda item: item[1][0]))
-        for k, inner in taxa_distance.items()
-    }
+        for species_1, species_2 in pairs:
+            if not is_valid_taxid(species_1) or not is_valid_taxid(species_2):
+                print(
+                    f"Skipping taxids {species_1}, {species_2} because one is invalid"
+                )
+                continue
+
+            if species_1 == species_2:
+                continue
+
+            try:
+                lineage_1 = ncbi.get_lineage(species_1)
+                lineage_2 = ncbi.get_lineage(species_2)
+            except Exception:
+                print(
+                    f"Skipping taxids {species_1}, {species_2} due to error fetching lineage"
+                )
+                continue
+
+            if not lineage_1 or not lineage_2:
+                print(
+                    f"Skipping taxids {species_1}, {species_2} because lineage is empty"
+                )
+                continue
+
+            lca = get_lca_from_lineages(lineage_1, lineage_2)
+            common_lineage_length = len(set(lineage_1) & set(lineage_2))
+            distance_species_1 = len(lineage_1) - common_lineage_length
+            distance_species_2 = len(lineage_2) - common_lineage_length
+            total_distance = distance_species_1 + distance_species_2
+
+            if total_distance > 0:
+                taxa_distance[query_taxid][(species_1, species_2)] = (
+                    total_distance,
+                    lca,
+                )
+
+        # Sort each inner dict by distance
+        taxa_distance[query_taxid] = dict(
+            sorted(taxa_distance[query_taxid].items(), key=lambda item: item[1][0])
+        )
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    output_file = os.path.join(output_dir, "ranked_taxa.json")
 
+    output_file = os.path.join(output_dir, "ranked_taxa.pkl")
     with open(output_file, "wb") as f:
-        pickle.dump(sorted_taxa, f)
+        pickle.dump(taxa_distance, f)
 
     print(
-        f"Saved calculated taxonomic distances for every target species to {output_file}"
+        f"Saved calculated taxonomic distances for every query species to {output_file}"
     )
-    return sorted_taxa
+    return taxa_distance

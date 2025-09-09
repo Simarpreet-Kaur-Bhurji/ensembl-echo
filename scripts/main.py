@@ -29,8 +29,9 @@ import argparse
 import duckdb
 import pickle
 import os
+import time
 
-from rank_by_taxon_module import (
+from new_rank_by_taxon_module import (
     get_all_input_species_combinations,
     calculate_taxonomic_distance,
 )
@@ -39,7 +40,8 @@ from generate_input_tsv import *
 from parse_hcp_fasta import parse_hcp_fasta
 from parse_metadata_parquet import create_hcp_table, get_hcp_tax_ids
 from generate_clusters import run_mmseqs, parse_cluster_file
-from closest_taxonomic_relatives_module import get_closest_rel_within_cluster
+from new_closest_taxonomic_relatives_module import get_closest_rel_within_cluster
+from diagnostics import get_diagnostic_stats_and_plots
 
 
 def validate_args(args):
@@ -85,6 +87,28 @@ def process_hcp_fasta(args):
     return output_tsv_name
 
 
+def write_elapsed_time(start_time, end_time, output_dir):
+    elapsed_time = end_time - start_time
+    minutes, seconds = divmod(int(elapsed_time), 60)
+
+    runtime_message = (
+        f"Closest relatives for all queries were computed in {minutes} min {seconds} sec.\n"
+        f"Results, diagnostic stats and plots are stored in: {output_dir}\n"
+    )
+
+    echo_file = os.path.join(output_dir, "echo_pipeline_summary.txt")
+
+    # Append to cluster_summary.txt
+    mode = "a" if os.path.exists(echo_file) else "w"
+    with open(echo_file, mode) as f:
+        if mode == "w":
+            f.write("ECHO Pipeline Summary\n")
+            f.write("======================\n\n")
+        f.write(runtime_message)
+
+    return runtime_message.strip()
+
+
 def load_or_calculate_ranked_taxa(combinations, output_dir):
     """
     Load previously calculated ranked taxa from JSON if it exists,
@@ -93,32 +117,81 @@ def load_or_calculate_ranked_taxa(combinations, output_dir):
     Returns:
         dict: Ranked taxa mapping for input species combinations.
     """
-    rank_taxon_file = os.path.join(output_dir, "ranked_taxa.json")
+    rank_taxon_file = os.path.join(output_dir, "ranked_taxa.pkl")
     if os.path.exists(rank_taxon_file):
-        with open(rank_taxon_file, "rb") as f:
+        with open(rank_taxon_file, "r") as f:
             return pickle.load(f)
     return calculate_taxonomic_distance(combinations, output_dir)
 
 
 def append_to_relatives(output_dir):
     """
-    Append the contents of 'clusters_with_fewer_tax_ids.fa' to all
-    '*_relatives.fa' files in the output directory.
+    1. For each '*_relatives.fa', create a new '*_all_relatives.fa' file
+       that contains the relatives plus clusters_with_fewer_tax_ids.fa.
+    2. Create one combined_all_relatives.fa file containing all *_relatives.fa
+       and clusters_with_fewer_tax_ids.fa (only once).
+    3. Make hidden all original *_relatives.fa files and clusters_with_fewer_tax_ids.fa
+       by prefixing them with a dot, but leave newly created files visible.
     """
     clusters_file = os.path.join(output_dir, "clusters_with_fewer_tax_ids.fa")
-
     if not os.path.exists(clusters_file):
         raise FileNotFoundError(f"{clusters_file} not found!")
 
+    # Read clusters_with_fewer_tax_ids content once
     with open(clusters_file, "r") as cf:
         cluster_content = cf.read()
 
+    # Prepare all_queries_combined_relatives.fa
+    combined_path = os.path.join(output_dir, "all_queries_combined_relatives.fa")
+    with open(combined_path, "w") as combined_out:
+        for fname in os.listdir(output_dir):
+            if fname.endswith("_relatives.fa") and not fname.endswith(
+                "_all_relatives.fa"
+            ):
+                fpath = os.path.join(output_dir, fname)
+
+                # Read original relatives content
+                with open(fpath, "r") as rf:
+                    relatives_content = rf.read()
+
+                # Write *_all_relatives.fa
+                all_relatives_path = os.path.join(
+                    output_dir, fname.replace("_relatives.fa", "_all_relatives.fa")
+                )
+                with open(all_relatives_path, "w") as arf:
+                    arf.write(
+                        relatives_content.strip()
+                        + "\n"
+                        + cluster_content.strip()
+                        + "\n"
+                    )
+                print(f"Created {all_relatives_path}")
+
+                # Append to combined_all_relatives.fa
+                combined_out.write(relatives_content.strip() + "\n")
+
+        # Finally, append clusters_with_fewer_tax_ids content once
+        combined_out.write(cluster_content.strip() + "\n")
+
+    print(f"Created combined_all_relatives.fa: {combined_path}")
+
+    # Hide only the original *_relatives.fa files and clusters_with_fewer_tax_ids.fa
     for fname in os.listdir(output_dir):
-        if fname.endswith("_relatives.fa"):
-            fpath = os.path.join(output_dir, fname)
-            with open(fpath, "a") as rf:  # append mode
-                rf.write("\n" + cluster_content)
-            print(f"Appended {clusters_file} to {fpath}")
+        fpath = os.path.join(output_dir, fname)
+        if (
+            (
+                (
+                    fname.endswith("_relatives.fa")
+                    and not fname.endswith("_all_relatives.fa")
+                )
+                or fname == "clusters_with_fewer_tax_ids.fa"
+            )
+            and not fname.startswith(".")
+            and fname != "combined_input_fasta.fa"
+        ):
+            hidden_path = os.path.join(output_dir, "." + fname)
+            os.rename(fpath, hidden_path)
+            print(f"Hidden {fname} -> {os.path.basename(hidden_path)}")
 
 
 def main():
@@ -223,6 +296,7 @@ def main():
             clusters = parse_cluster_file(cluster_file)
 
     # Connect to DuckDB and process metadata
+    start_time = time.time()
     con = duckdb.connect()
     metadata_pq_file = next(
         (
@@ -245,6 +319,16 @@ def main():
         args.num_of_rel, query_sps, clusters, ranked_taxa, con, args.output_dir
     )
     append_to_relatives(args.output_dir)
+
+    if args.input_hcp_fasta:
+        get_diagnostic_stats_and_plots(args.input_hcp_fasta, args.output_dir)
+    elif args.input_fasta_dir:
+        files = os.listdir(args.output_dir)
+        created_fasta_file = os.path.join(args.output_dir, "combined_input_fasta.fa")
+        get_diagnostic_stats_and_plots(created_fasta_file, args.output_dir)
+
+    end_time = time.time()
+    write_elapsed_time(start_time, end_time, args.output_dir)
 
 
 if __name__ == "__main__":

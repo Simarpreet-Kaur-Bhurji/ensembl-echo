@@ -6,12 +6,27 @@ def create_hcp_table(metadata_pq_file, con):
     """
     Create a DuckDB table 'hcp_table' from a Parquet file.
     """
+    # con.execute(
+    #    f"""
+    # CREATE TABLE hcp_table AS SELECT * FROM '{metadata_pq_file}'
+    # """
+    # )
+
     con.execute(
         f"""
-    CREATE TABLE hcp_table AS SELECT * FROM '{metadata_pq_file}'
+        CREATE OR REPLACE TABLE hcp_table AS
+        SELECT 
+            header,
+            sequence,
+            protein_id,
+            name,
+            CAST(tax_id AS INT) AS tax_id,
+            confidence_score,
+            confidence_level,
+            seq_len
+        FROM '{metadata_pq_file}'
     """
     )
-
     # print(f"DuckDB table 'hcp_table' created from Parquet file: {metadata_pq_file}")
 
     # Fetch and print the data to verify

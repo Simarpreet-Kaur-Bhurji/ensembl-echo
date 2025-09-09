@@ -38,3 +38,6 @@ def get_input_sps(file_path):
         all_species[key] = value
 
     return all_species
+
+
+# Update script to convert to tsv and instead of row[0] use column names.

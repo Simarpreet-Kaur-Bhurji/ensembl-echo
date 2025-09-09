@@ -1,72 +1,53 @@
 """
 closest_taxonomic_relatives_module.py
 
-This module provides functionality to identify the closest taxonomic relatives within clusters for target species 
-and retrieve their protein sequences. It interacts with a DuckDB table to query protein data and writes the results 
-to FASTA files for downstream analysis.
+This module identifies the closest taxonomic relatives within clusters for target species 
+and retrieves their protein sequences. It interacts with a DuckDB table created from a 
+Parquet file and writes results to FASTA files for downstream analysis.
 
-Functions:
-- get_sequences_from_pep: Retrieves the sequence for a given protein ID from the DuckDB table and writes it to an output file.
-- get_sequences_for_fasta: Retrieves sequences for a list of protein IDs and writes them to a FASTA file.
-- get_distance_for_all_proteins: Calculates the taxonomic distances for all proteins in a cluster relative to a target species.
-- get_closest_rel_within_cluster: Identifies the closest taxonomic relatives within clusters for each target species 
-  and retrieves their protein sequences.
-
-Dependencies:
-- pandas: Used for handling data retrieved from the DuckDB table.
-- duckdb: Used for querying the DuckDB table containing protein data.
-- os: Used for file and directory management.
-
-Output:
-- FASTA files containing the protein sequences of the closest taxonomic relatives for each target species.
-- Another FASTA file containing the sequences of all proteins in clusters with fewer than the specified number of relatives.
+Improvements:
+- Uses *batched queries per cluster* instead of one query per protein → much faster.
+- Keeps Pandas for convenient deduplication and sorting.
 """
-
 
 import os
 import pandas as pd
 
 
-def get_sequences_from_pep(prot_id, con, outfile):
+def get_sequences_from_pep(header, con, outfile):
     """
-    Get the sequence for a given protein ID from the DuckDB table and write it to an output file.
+    Get the sequence for a given protein header from the DuckDB table and write it to an output file.
 
     Args:
-        prot_id (str): The protein ID.
+        header (str): The full protein header from the cluster.
         con (duckdb.DuckDBPyConnection): The DuckDB connection object.
         outfile (file object): The output file object.
 
     Returns:
-        tuple: The header and sequence that match the input protein ID.
+        tuple: The header and sequence that match the input header.
     """
-    # Protein from the input csv file
     row = con.execute(
-        "SELECT * FROM hcp_table WHERE protein_id = ?", (prot_id,)
+        "SELECT header, sequence FROM hcp_table WHERE header = ? LIMIT 1", (header,)
     ).fetchdf()
-    if not row.empty:
-        # Access values in the row
-        header = row["header"].values[0]
-        sequence = row["sequence"].values[0]
-        print(header, sequence)
-        outfile.write(f">{header}\n{sequence}\n")
 
+    if not row.empty:
+        sequence = row["sequence"].values[0]
+        outfile.write(f">{header}\n{sequence}\n")
         return header, sequence
     else:
-        print(f"No match found for protein ID: {prot_id}")
+        print(f"No match found for header: {header}")
         return None
 
 
-def get_sequences_for_fasta(proteins, con, output_dir, file_name):
+def get_sequences_for_fasta(protein_headers, con, output_dir, file_name):
     """
-    Retrieve sequences for the given proteins and write them to the output file.
+    Retrieve sequences for the given protein headers and write them to a FASTA file.
 
     Args:
-        proteins (list): List of proteins.
+        proteins (list): List of full protein headers from the cluster.
         con (duckdb.DuckDBPyConnection): The DuckDB connection object.
         output_dir (str): Path to the output directory.
-
-    Returns:
-        None
+        file_name (str): Name of the FASTA file to write.
     """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -74,259 +55,269 @@ def get_sequences_for_fasta(proteins, con, output_dir, file_name):
     output_file = os.path.join(output_dir, file_name)
 
     with open(output_file, "a") as outfile:
-        for i in proteins:
-            split_header = i.split("|")
-            prot_id = split_header[0]
-            # print(prot_id)
-            seq = get_sequences_from_pep(prot_id, con, outfile)
+        for header in protein_headers:
+            get_sequences_from_pep(header.strip(), con, outfile)
 
 
-def get_distance_for_all_proteins(
-    unique_cluster_protein_tax_ids, target_tax_id, ranked_taxa
-):
+def get_distance_for_all_proteins(unique_cluster_tax_ids, query_tax_id, ranked_taxa):
     """
-    Retrieve the taxonomy IDs of the ranked closest relatives for a target taxon
-    within a cluster based on precomputed taxonomic distances.
-
-    Args:
-        unique_cluster_protein_tax_ids (list): A list of unique taxon IDs for proteins in the cluster.
-        target_tax_id (int): The taxonomy ID of the target species.
-        ranked_taxa (dict): A dictionary where keys are tuples of taxon ID pairs (target_tax_id, other_tax_id),
-                            and values are tuples containing:
-                            - Distance (int): The taxonomic distance between the two taxa.
-                            - LCA (int): The last common ancestor taxon ID.
-
-    Returns:
-        list: A list of taxonomy IDs representing the ranked closest relatives for the target taxon,
-              sorted by taxonomic distance in ascending order.
-
-    Example:
-        Input:
-            unique_cluster_protein_tax_ids = [9606, 10090, 10116]
-            target_tax_id = 9606
-            ranked_taxa = {
-                (9606, 10090): (3, 9605),
-                (9606, 10116): (5, 9604)
-            }
-
+    Calculate distances for all proteins in a cluster relative to a target taxon.
     """
     distances = []
-    for taxon in unique_cluster_protein_tax_ids:
-        if int(taxon) != int(target_tax_id):
+    for taxon in unique_cluster_tax_ids:
+        if int(taxon) != int(query_tax_id):
             for k, v in ranked_taxa.items():
-                if taxon in k and target_tax_id in k:
-                    distances.append((int(v[0]), v[1], taxon))
+                if taxon in k and query_tax_id in k:
+                    distances.append((int(v[0]), v[1], int(taxon)))
 
+    # Do I need to sort by tax id here? Yes to make the code reproducible
     sorted_distances = sorted(distances, key=lambda x: (x[0], int(x[2])))
-    ranked_closest_relatives = [int(i[2]) for i in sorted_distances]
-    print("Ranked closest relatives for target taxon", ranked_closest_relatives)
+    # sorted_distances = sorted(distances, key=lambda x: x[0])
     return sorted_distances
 
 
-def get_proteins_from_taxid(tax_id, proteins, query_name, output_path, con):
-    """
-    Get proteins from a given taxonomy ID and write their sequences to an output file.
-
-    Args:
-        tax_id (str): The taxonomy ID.
-        proteins (list): List of proteins.
-        target (str): The target identifier.
-        output_path (str): Path to the output directory.
-        con (duckdb.DuckDBPyConnection): The DuckDB connection object.
-
-    Returns:
-        None
-    """
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
-
-    query = query_name.lower().replace(" ", "_")
-    file_name = f"{query}_relatives.fa"
-    file_path = os.path.join(output_path, file_name)
+def write_closest_relatives_fasta(closest_df, query_name, output_dir):
+    print(f"Writing {len(closest_df)} sequences for query '{query_name}'")
+    query_file_name = query_name.lower().replace(" ", "_")
+    file_name = f"{query_file_name}_relatives.fa"
+    file_path = os.path.join(output_dir, file_name)
+    os.makedirs(output_dir, exist_ok=True)
     mode = "a" if os.path.isfile(file_path) else "w"
 
-    with open(file_path, mode) as file:
-        for j in proteins:
-            # Query hcp_table for this protein and tax_id
-            split_header = j.split("|")
-            prot_id = split_header[0]
-            query = """
-                SELECT header, sequence 
-                FROM hcp_table 
-                WHERE protein_id = ? AND tax_id = ?
-            """
-            result = con.execute(query, (prot_id, tax_id)).fetchdf()
-
-            if not result.empty:
-                header = result["header"].values[0]
-                sequence = result["sequence"].values[0]
-                file.write(f">{header}\n")
-                # Wrap sequence at 80 characters per line
-                for i in range(0, len(sequence), 80):
-                    file.write(sequence[i : i + 80] + "\n")
-            # seq = get_sequences_from_pep(prot_id, con, file)
+    with open(file_path, mode) as fasta_file:
+        for _, row in closest_df.iterrows():
+            header = row["header"]
+            sequence = row["sequence"]
+            fasta_file.write(f">{header}\n")
+            # Wrap sequence at 80 characters per line
+            for i in range(0, len(sequence), 80):
+                fasta_file.write(sequence[i : i + 80] + "\n")
 
 
-def break_taxonomic_ties(sorted_distances, proteins, con):
+def break_taxonomic_ties(sorted_distances, protein_headers, con):
     """
-    Break taxonomic ties by sorting based on distance, sequence length, and optionally confidence level.
+    Break taxonomic ties using DuckDB with a temporary table for distances.
+    Efficient for large clusters and avoids Pandas merge.
 
     Args:
-        sorted_distances (list): A list of tuples containing distance, LCA, and tax_id.
-        proteins (list): A list of protein headers.
-        con (duckdb.DuckDBPyConnection): The DuckDB connection object.
+        sorted_distances (list): List of tuples (distance, lca, tax_id)
+        proteins (list): List of full protein headers in the cluster
+        con (duckdb.DuckDBPyConnection): DuckDB connection object
 
     Returns:
-        pd.DataFrame: A DataFrame containing the resolved ties.
+        pd.DataFrame: DataFrame with resolved ties containing columns
+                      ["header", "tax_id", "distance", "seq_len", "confidence_level"]
     """
-    distances_df = pd.DataFrame(sorted_distances, columns=["distance", "lca", "tax_id"])
-    distances_df["tax_id"] = distances_df["tax_id"].astype(str)
-
-    prot_ids = [p.split("|")[0].strip() for p in proteins]
-    placeholders = ",".join("?" for _ in prot_ids)
-    query = f"""
-        SELECT protein_id, tax_id, confidence_level, seq_len
-        FROM hcp_table
-        WHERE protein_id IN ({placeholders})
-    """
-
-    protein_df = con.execute(query, prot_ids).fetchdf()
-    protein_df["tax_id"] = protein_df["tax_id"].astype(str)
-
-    # Merge the protein data with distances
-    merged_df = pd.merge(protein_df, distances_df, on="tax_id", how="inner")
-
-    # Handle confidence_level as optional
-    if "confidence_level" in merged_df.columns:
-        merged_df["confidence_level"] = merged_df["confidence_level"].fillna("NA")
-        merged_df["confidence_level"] = pd.Categorical(
-            merged_df["confidence_level"],
-            categories=["high1", "high2", "high3", "NA"],
-            ordered=True,
-        )
-        # Check if all confidence_level values are "NA"
-        if all(merged_df["confidence_level"] == "NA"):
-            # Sort by distance and sequence length only
-            merged_df = merged_df.sort_values(
-                by=["distance", "seq_len"], ascending=[True, False]
-            )
-        else:
-            # Sort by distance, sequence length, and confidence level
-            merged_df = merged_df.sort_values(
-                by=["distance", "seq_len", "confidence_level"],
-                ascending=[True, False, True],
-            )
-    else:
-        # Sort by distance and sequence length only
-        merged_df = merged_df.sort_values(
-            by=["distance", "seq_len"], ascending=[True, False]
+    if not sorted_distances or not protein_headers:
+        return pd.DataFrame(
+            columns=["header", "tax_id", "distance", "seq_len", "confidence_level"]
         )
 
-    # Drop duplicates based on tax_id, keeping the first occurrence
+    # Create a temporary table for distances
+    con.execute(
+        "CREATE TEMP TABLE distance_table(distance INTEGER, lca INTEGER, tax_id INTEGER)"
+    )
+    con.executemany("INSERT INTO distance_table VALUES (?, ?, ?)", sorted_distances)
+
+    # Prepare placeholders for headers
+    headers_placeholders = ",".join("?" for _ in protein_headers)
+
+    # SQL query: join hcp_table with temp distance_table
+    sql = f"""
+    SELECT h.header, h.tax_id, h.seq_len,
+           COALESCE(h.confidence_level, 'NA') AS confidence_level,
+           d.distance, h.sequence
+    FROM hcp_table h
+    JOIN distance_table d USING(tax_id)
+    WHERE h.header IN ({headers_placeholders})
+    ORDER BY d.distance ASC, h.seq_len DESC,
+             CASE COALESCE(h.confidence_level, 'NA')
+                 WHEN 'high1' THEN 1
+                 WHEN 'high2' THEN 2
+                 WHEN 'high3' THEN 3
+                 ELSE 99
+             END ASC
+    """
+
+    # Execute query
+    merged_df = con.execute(sql, protein_headers).fetchdf()
+    # print("Merged and sorted DataFrame:\n", merged_df)
+
+    # print("Duplicates", merged_df[merged_df.duplicated(subset=["header"])])
+    # Drop duplicates per tax_id (keep first)
     final_df = merged_df.drop_duplicates(subset="tax_id", keep="first")
 
+    # Drop temporary table
+    con.execute("DROP TABLE distance_table")
+
     return final_df[
-        ["protein_id", "tax_id", "distance", "seq_len", "confidence_level"]
+        ["header", "tax_id", "seq_len", "confidence_level", "distance", "sequence"]
     ]
 
 
-def get_taxids_from_proteins(con, proteins):
-    tax_ids = []
-    for p in proteins:
-        split_header = p.split("|")
-        prot_id = split_header[0]
-        tax_id = con.execute(
-            "SELECT tax_id FROM hcp_table WHERE protein_id = ?", (prot_id,)
-        ).fetchdf()
-        tax_ids.extend(tax_id["tax_id"].tolist())
-
-    return list(set(map(int, tax_ids)))
+def get_taxids_from_proteins(protein_headers, con):
+    """
+    Get unique tax_ids for a list of proteins using full headers (not just protein IDs).
+    """
+    headers = [p.strip() for p in protein_headers]
+    placeholders = ",".join("?" for _ in headers)
+    query = f"SELECT DISTINCT tax_id FROM hcp_table WHERE header IN ({placeholders})"
+    df = con.execute(query, headers).fetchdf()
+    # print("Distinct tax ids in cluster:", df)
+    return df["tax_id"].astype(int).tolist()
 
 
 def get_closest_rel_within_cluster(
-    number_of_relatives, target_species, clusters_dict, ranked_taxa, con, output_dir
+    number_of_relatives, query_species, clusters_dict, ranked_taxa, con, output_dir
 ):
     """
-    Identify the closest taxonomic relatives within clusters for each target species and retrieve their protein sequences.
-
-    Args:
-        number_of_relatives (int): The number of closest relatives to identify for each target species.
-        target_species (dict): A dictionary where keys are target species taxon IDs, and values are tuples containing:
-                               - Species name (str)
-                               - Production name (str)
-        clusters_dict (dict): A dictionary where keys are cluster IDs, and values are lists of protein identifiers
-                              (e.g., "protein_id_name_tax_id").
-        ranked_taxa (dict): A dictionary where keys are target taxon IDs, and values are dictionaries containing
-                            precomputed taxonomic distances for each target taxon and other taxa.
-        con (duckdb.DuckDBPyConnection): The DuckDB connection object for querying protein sequences.
-        output_dir (str): The directory where the output FASTA files will be saved.
-
-    Returns:
-        None: The function writes the closest relatives' protein sequences to FASTA files in the specified output directory.
-
-    Workflow:
-        1. For each cluster, extract the unique taxonomic IDs of the proteins in the cluster.
-        2. If the number of unique taxonomic IDs is less than or equal to `number_of_relatives`, retrieve all protein sequences.
-        3. Otherwise, for each target species:
-            - Calculate the distances to all proteins in the cluster using `get_distance_for_all_proteins`.
-            - Identify the closest relatives based on the specified `number_of_relatives`.
-            - Retrieve the protein sequences for the closest relatives using `get_proteins_from_taxid`.
+    Identify the closest taxonomic relatives within clusters and write results to FASTA + log.
     """
     log_data = []
+    singleton_cluster_summary = []
+    less_than_req_num_rel_cluster_summary = []
 
-    for cluster_id, proteins in clusters_dict.items():
-        # tax_id_of_protein = [int(p.split("|")[4]) for p in proteins]
-        # unique_cluster_protein_tax_ids = list(dict.fromkeys(tax_id_of_protein))
-        unique_cluster_protein_tax_ids = get_taxids_from_proteins(con, proteins)
-        print("Cluster No.", cluster_id.split(" ")[1])
-        if len(proteins) == 1:
-            # print(proteins)
-            file_name_singleton = "discarded_singletons.fa"
-            write_singletons = get_sequences_for_fasta(
-                proteins, con, output_dir, file_name_singleton
+    # Counters
+    singletons_count = 0
+    small_clusters_count = 0
+    valid_clusters_count = 0
+
+    for cluster_id, protein_headers in clusters_dict.items():
+        unique_cluster_tax_ids = get_taxids_from_proteins(protein_headers, con)
+        print(
+            f"Processing {cluster_id} with {len(protein_headers)} proteins and {len(unique_cluster_tax_ids)} tax ids."
+        )
+
+        if len(protein_headers) == 1:
+            singletons_count += 1
+            print(f"Skipping {cluster_id}: only one protein in cluster.")
+            get_sequences_for_fasta(
+                protein_headers, con, output_dir, "discarded_singletons.fa"
             )
 
-        elif len(unique_cluster_protein_tax_ids) < number_of_relatives:
-            file_name_fewer = "clusters_with_fewer_tax_ids.fa"
-            to_write = get_sequences_for_fasta(
-                proteins, con, output_dir, file_name_fewer
+            singleton_cluster_summary.append(
+                {
+                    "cluster_id": cluster_id,
+                    "prot_id": protein_headers[0],
+                    "tax_id": list(unique_cluster_tax_ids)[0]
+                    if unique_cluster_tax_ids
+                    else None,
+                }
             )
 
-        else:
-            for target_tax_id, target_name in target_species.items():
+        elif (
+            len(unique_cluster_tax_ids) < number_of_relatives
+            and len(protein_headers) > 1
+        ):
+            small_clusters_count += 1
+            print(
+                f" {cluster_id} has fewer than {number_of_relatives} taxon ids; saving all proteins."
+            )
+            get_sequences_for_fasta(
+                protein_headers, con, output_dir, "clusters_with_fewer_tax_ids.fa"
+            )
+
+            less_than_req_num_rel_cluster_summary.append(
+                {
+                    "cluster_id": cluster_id,
+                    "proteins": ",".join(protein_headers),
+                    "tax_ids": ",".join(map(str, unique_cluster_tax_ids)),
+                    "total_prot_ids": len(protein_headers),
+                    "total_tax_ids": len(unique_cluster_tax_ids),
+                }
+            )
+
+        elif len(unique_cluster_tax_ids) >= number_of_relatives:
+            valid_clusters_count += 1
+            print(
+                f" {cluster_id} has more than {number_of_relatives} taxon ids; selecting {number_of_relatives} closest from them.."
+            )
+            for query_tax_id, query_name in query_species.items():
+                print("Query tax id:", query_tax_id, query_name)
                 sorted_distances = get_distance_for_all_proteins(
-                    unique_cluster_protein_tax_ids,
-                    target_tax_id,
-                    ranked_taxa[target_tax_id],
+                    unique_cluster_tax_ids, query_tax_id, ranked_taxa[query_tax_id]
                 )
-                resolved_ties = break_taxonomic_ties(sorted_distances, proteins, con)
-                print(resolved_ties)
-                ranked_closest_relatives = resolved_ties["tax_id"].tolist()
+
+                resolved_ties = break_taxonomic_ties(
+                    sorted_distances, protein_headers, con
+                )
+                # print(" Resolved ties:\n", resolved_ties)
+
+                # Take top N closest proteins
+                closest_df = resolved_ties.head(number_of_relatives)
+                print(f"Closest relatives DataFrame: closest_df of length {closest_df}")
+
+                # Extract closest headers, sequences, tax_ids, and distances
+                closest_proteins = closest_df["header"].tolist()
+                closest_seqs = closest_df["sequence"].tolist()
+                closest_relatives = closest_df["tax_id"].tolist()
+                closest_distances = closest_df["distance"].tolist()
+
                 print(
-                    f"{number_of_relatives} closest relatives of target {target_tax_id}, {target_name}: {ranked_closest_relatives[:number_of_relatives]}"
+                    f"{number_of_relatives} closest relatives for query {query_tax_id} ({query_name}) are {closest_relatives} and their distances to the query are {closest_distances}"
                 )
-                closest_relatives = ranked_closest_relatives[:number_of_relatives]
-                for i in closest_relatives:
-                    get_proteins_from_taxid(
-                        i, proteins, target_name, output_dir, con
-                    )
+                write_closest_relatives_fasta(closest_df, query_name, output_dir)
 
                 log_data.append(
                     {
                         "cluster_id": cluster_id,
-                        "target_species_name": target_name,
-                        "target_taxonomy_id": target_tax_id,
+                        "query_species_name": query_name,
+                        "query_taxonomy_id": query_tax_id,
                         "closest_relatives": closest_relatives,
+                        "closest_proteins": closest_proteins,
+                        "closest_distances": closest_distances,
+                        "num_proteins": len(protein_headers),
+                        "num_unique_tax_ids": len(unique_cluster_tax_ids),
                     }
                 )
 
-    # Write log data to a TSV file
+    # Write log file
+
     tsv_log_path = os.path.join(output_dir, "closest_relatives_log.tsv")
     with open(tsv_log_path, "w") as tsv_file:
+        # Updated header
         tsv_file.write(
-            "Cluster_ID\tTarget_Species_Name\tTarget_Taxonomy_ID\tClosest_Relatives\n"
+            "Cluster_ID\tQuery_Species_Name\tQuery_Taxonomy_ID\t"
+            "Closest_Relatives\tClosest_Proteins\tClosest_Distances\t"
+            "Num_Proteins\tNum_Unique_TaxIDs\n"
         )
         for entry in log_data:
             tsv_file.write(
-                f"{entry['cluster_id']}\t{entry['target_species_name']}\t{entry['target_taxonomy_id']}\t{','.join(map(str, entry['closest_relatives']))}\n"
+                f"{entry['cluster_id']}\t"
+                f"{entry['query_species_name']}\t"
+                f"{entry['query_taxonomy_id']}\t"
+                f"{','.join(map(str, entry['closest_relatives']))}\t"
+                f"{','.join(entry['closest_proteins'])}\t"
+                f"{','.join(map(str, entry['closest_distances']))}\t"
+                f"{entry['num_proteins']}\t"
+                f"{entry['num_unique_tax_ids']}\n"
             )
+
+    # --- Write singleton cluster summary ---
+    singleton_summary_path = os.path.join(output_dir, "singleton_cluster_summary.tsv")
+    with open(singleton_summary_path, "w") as f:
+        f.write("Cluster_ID\tProtein_ID\tTax_ID\n")
+        for entry in singleton_cluster_summary:
+            f.write(f"{entry['cluster_id']}\t{entry['prot_id']}\t{entry['tax_id']}\n")
+
+    print(f"Singleton cluster summary written to {singleton_summary_path}")
+
+    # --- Write small clusters (less than required relatives) summary ---
+    small_clusters_summary_path = os.path.join(
+        output_dir, "clusters_with_fewer_taxids_summary.tsv"
+    )
+    with open(small_clusters_summary_path, "w") as f:
+        f.write("Cluster_ID\tProteins\tTax_ids\tTotal_Proteins\tTotal_TaxIDs\n")
+        for entry in less_than_req_num_rel_cluster_summary:
+            f.write(
+                f"{entry['cluster_id']}\t{entry['proteins']}\t{entry['tax_ids']}\t{entry['total_prot_ids']}\t{entry['total_tax_ids']}\n"
+            )
+
+    print(
+        f"Clusters with fewer than required relatives summary written to {small_clusters_summary_path}"
+    )
+
+    print("\n=== Cluster Summary ===")
+    print(f"Singleton clusters: {singletons_count}")
+    print(f"Clusters with < {number_of_relatives} tax IDs : {small_clusters_count}")
+    print(f"Clusters with >= {number_of_relatives} tax IDs: {valid_clusters_count}")
