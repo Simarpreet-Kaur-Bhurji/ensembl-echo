@@ -30,7 +30,7 @@ import duckdb
 import pickle
 import os
 import time
-
+from multiprocessing import Pool, cpu_count
 from rank_by_taxon_module import (
     get_all_input_species_combinations,
     calculate_taxonomic_distance,
@@ -39,9 +39,14 @@ from process_input_species_module import get_input_sps
 from generate_input_tsv import *
 from parse_hcp_fasta import parse_hcp_fasta
 from parse_metadata_parquet import create_hcp_table, get_hcp_tax_ids
-from generate_clusters import run_mmseqs, parse_cluster_file
+from generate_and_process_clusters import (
+    process_clusters,
+    run_mmseqs,
+    parse_cluster_file,
+)
 from closest_taxonomic_relatives_module import get_closest_rel_within_cluster
 from diagnostics import get_diagnostic_stats_and_plots
+import cProfile
 
 
 def validate_args(args):
@@ -109,29 +114,42 @@ def write_elapsed_time(start_time, end_time, output_dir):
     return runtime_message.strip()
 
 
-def load_or_calculate_ranked_taxa(combinations, output_dir):
+def load_ranked_taxa(con, rank_taxon_file, query_hcp_combinations, output_dir):
     """
-    Load previously calculated ranked taxa from JSON if it exists,
-    otherwise calculate and return taxonomic distances.
+    Load ranked_taxa from TSV if it exists; otherwise, calculate and save it.
+
+    Args:
+        con (duckdb.DuckDBPyConnection): DuckDB connection object.
+        rank_taxon_file (str): Path to TSV file containing ranked_taxa.
+        query_hcp_combinations (dict): Combinations for distance calculation.
+        output_dir (str): Directory to save TSV if calculation is needed.
 
     Returns:
-        dict: Ranked taxa mapping for input species combinations.
+        None
     """
-    rank_taxon_file = os.path.join(output_dir, "ranked_taxa.pkl")
     if os.path.exists(rank_taxon_file):
-        with open(rank_taxon_file, "r") as f:
-            return pickle.load(f)
-    return calculate_taxonomic_distance(combinations, output_dir)
+        print(f"Loading existing ranked_taxa from {rank_taxon_file}")
+    else:
+        print(f"{rank_taxon_file} not found — calculating ranked_taxa")
+        calculate_taxonomic_distance(query_hcp_combinations, output_dir)
+
+    # Load TSV into DuckDB
+    con.execute(
+        f"""
+        CREATE OR REPLACE TABLE ranked_taxa AS
+        SELECT *
+        FROM read_csv_auto('{rank_taxon_file}', sep='\t')
+    """
+    )
+    print(f"Loaded ranked_taxa table from {rank_taxon_file}")
 
 
 def append_to_relatives(output_dir):
     """
-    1. For each '*_relatives.fa', create a new '*_all_relatives.fa' file
-       that contains the relatives plus clusters_with_fewer_tax_ids.fa.
-    2. Create one combined_all_relatives.fa file containing all *_relatives.fa
-       and clusters_with_fewer_tax_ids.fa (only once).
-    3. Make hidden all original *_relatives.fa files and clusters_with_fewer_tax_ids.fa
-       by prefixing them with a dot, but leave newly created files visible.
+    For each '*_relatives.fa':
+      1. Create a new '*_all_relatives.fa' file that contains the relatives
+         plus clusters_with_fewer_tax_ids.fa.
+      2. Hide the original *_relatives.fa files and clusters_with_fewer_tax_ids.fa.
     """
     clusters_file = os.path.join(output_dir, "clusters_with_fewer_tax_ids.fa")
     if not os.path.exists(clusters_file):
@@ -142,38 +160,24 @@ def append_to_relatives(output_dir):
         cluster_content = cf.read()
 
     # Prepare all_queries_combined_relatives.fa
-    combined_path = os.path.join(output_dir, "all_queries_relatives_combined.fa")
-    with open(combined_path, "w") as combined_out:
-        for fname in os.listdir(output_dir):
-            if fname.endswith("_relatives.fa") and not fname.endswith(
-                "_all_relatives.fa"
-            ):
-                fpath = os.path.join(output_dir, fname)
 
-                # Read original relatives content
-                with open(fpath, "r") as rf:
-                    relatives_content = rf.read()
+    for fname in os.listdir(output_dir):
+        if fname.endswith("_relatives.fa") and not fname.endswith("_all_relatives.fa"):
+            fpath = os.path.join(output_dir, fname)
 
-                # Write *_all_relatives.fa
-                all_relatives_path = os.path.join(
-                    output_dir, fname.replace("_relatives.fa", "_all_relatives.fa")
+            # Read original relatives content
+            with open(fpath, "r") as rf:
+                relatives_content = rf.read()
+
+            # Write *_all_relatives.fa
+            all_relatives_path = os.path.join(
+                output_dir, fname.replace("_relatives.fa", "_all_relatives.fa")
+            )
+            with open(all_relatives_path, "w") as arf:
+                arf.write(
+                    relatives_content.strip() + "\n" + cluster_content.strip() + "\n"
                 )
-                with open(all_relatives_path, "w") as arf:
-                    arf.write(
-                        relatives_content.strip()
-                        + "\n"
-                        + cluster_content.strip()
-                        + "\n"
-                    )
-                print(f"Created {all_relatives_path}")
-
-                # Append to combined_all_relatives.fa
-                combined_out.write(relatives_content.strip() + "\n")
-
-        # Finally, append clusters_with_fewer_tax_ids content once
-        combined_out.write(cluster_content.strip() + "\n")
-
-    print(f"Created combined_all_relatives.fa: {combined_path}")
+            print(f"Created {all_relatives_path}")
 
     # Hide only the original *_relatives.fa files and clusters_with_fewer_tax_ids.fa
     for fname in os.listdir(output_dir):
@@ -192,6 +196,26 @@ def append_to_relatives(output_dir):
             hidden_path = os.path.join(output_dir, "." + fname)
             os.rename(fpath, hidden_path)
             print(f"Hidden {fname} -> {os.path.basename(hidden_path)}")
+
+
+def get_remaining_clusters(cluster_file, args, con):
+    output_processed_input = os.path.join(args.output_dir, "processed_input.parquet")
+    output_cluster_name = os.path.join(str(args.output_dir), "clusters.parquet")
+
+    parse_cluster_file(
+        cluster_file, output_processed_input, con, args.output_dir
+    )  # This creates clusters.parquet
+
+    con = duckdb.connect()
+    con.execute(
+        f"CREATE OR REPLACE TABLE clusters AS SELECT * FROM read_parquet('{output_cluster_name}')"
+    )
+
+    remaining_clusters = process_clusters(
+        args.output_dir,
+        args.num_of_rel,
+    )
+    return remaining_clusters
 
 
 def main():
@@ -256,6 +280,8 @@ def main():
         help="Path to MMseqs Singularity image",
     )
 
+    con = duckdb.connect()
+
     args = parser.parse_args()
 
     # Validate arguments
@@ -266,7 +292,7 @@ def main():
         combine_fasta_name, processed_input_tsv = process_fasta_dir(args)
         cluster_file = os.path.join(args.output_dir, "mmseqs_results_cluster.tsv")
         if os.path.exists(cluster_file):
-            clusters = parse_cluster_file(cluster_file)
+            remaining_clusters = get_remaining_clusters(cluster_file, args, con)
         else:
             cluster_file = run_mmseqs(
                 combine_fasta_name,
@@ -277,12 +303,13 @@ def main():
                 threads=args.threads,
                 singularity_image=args.singularity_image,
             )
-            clusters = parse_cluster_file(cluster_file)
+            remaining_clusters = get_remaining_clusters(cluster_file, args, con)
+
     elif args.input_hcp_fasta:
         processed_input_tsv = process_hcp_fasta(args)
         cluster_file = os.path.join(args.output_dir, "mmseqs_results_cluster.tsv")
         if os.path.exists(cluster_file):
-            clusters = parse_cluster_file(cluster_file)
+            remaining_clusters = get_remaining_clusters(cluster_file, args, con)
         else:
             cluster_file = run_mmseqs(
                 args.input_hcp_fasta,
@@ -293,31 +320,27 @@ def main():
                 threads=args.threads,
                 singularity_image=args.singularity_image,
             )
-            clusters = parse_cluster_file(cluster_file)
+            remaining_clusters = get_remaining_clusters(cluster_file, args, con)
 
     # Connect to DuckDB and process metadata
     start_time = time.time()
-    con = duckdb.connect()
-    metadata_pq_file = next(
-        (
-            os.path.join(args.output_dir, f)
-            for f in os.listdir(args.output_dir)
-            if f.endswith(".parquet")
-        ),
-        None,
-    )
+
+    metadata_pq_file = os.path.join(args.output_dir, "processed_input.parquet")
     create_hcp_table(metadata_pq_file, con)
     query_sps = get_input_sps(args.query_species)
     taxon_ids = get_hcp_tax_ids(con)
 
     # Generate combinations and calculate ranked taxa
     combinations = get_all_input_species_combinations(query_sps, taxon_ids)
-    ranked_taxa = load_or_calculate_ranked_taxa(combinations, args.output_dir)
+    rank_taxon_file = os.path.join(args.output_dir, "ranked_taxa.tsv")
+
+    load_ranked_taxa(con, rank_taxon_file, combinations, args.output_dir)
 
     # Get closest relatives
     get_closest_rel_within_cluster(
-        args.num_of_rel, query_sps, clusters, ranked_taxa, con, args.output_dir
+        remaining_clusters, args.num_of_rel, query_sps, con, args.output_dir
     )
+
     append_to_relatives(args.output_dir)
 
     if args.input_hcp_fasta:
@@ -332,4 +355,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    cProfile.run("main()")

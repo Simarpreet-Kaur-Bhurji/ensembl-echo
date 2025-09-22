@@ -26,8 +26,8 @@ def get_input_sps(file_path):
         file_path (str): Path to the query species file.
 
     Returns:
-        dict: A dictionary with the taxonomy id as the key and the species name and production name
-        as values in a tuple.
+        dict: A dictionary with the taxonomy id as the key and the species name
+        as values.
     """
     all_species = {}
     df = pd.read_csv(file_path, delimiter=",")
@@ -38,6 +38,3 @@ def get_input_sps(file_path):
         all_species[key] = value
 
     return all_species
-
-
-# Update script to convert to tsv and instead of row[0] use column names.

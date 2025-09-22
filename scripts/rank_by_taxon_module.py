@@ -1,9 +1,10 @@
 from ete3 import NCBITaxa
 from collections import defaultdict
 import pickle
+import pandas as pd
 import os
 
-ncbi = NCBITaxa(dbfile="~/.etetoolkit/taxa.sqlite")
+ncbi = NCBITaxa(dbfile="/homes/sbhurji/.etetoolkit/taxa.sqlite")
 # ncbi.update_taxonomy_database()
 
 
@@ -56,7 +57,7 @@ def calculate_taxonomic_distance(query_hcp_combinations, output_dir):
             ...
         }
     """
-    taxa_distance = defaultdict(dict)
+    rows = []
 
     for query_taxid, pairs in query_hcp_combinations.items():
         if not is_valid_taxid(query_taxid):
@@ -95,24 +96,22 @@ def calculate_taxonomic_distance(query_hcp_combinations, output_dir):
             total_distance = distance_species_1 + distance_species_2
 
             if total_distance > 0:
-                taxa_distance[query_taxid][(species_1, species_2)] = (
-                    total_distance,
-                    lca,
+                rows.append(
+                    {
+                        "query_tax_id": query_taxid,
+                        "input_tid": species_2,  # the "hcp_taxid" in your old dict
+                        "distance": total_distance,
+                        "lca": lca,
+                    }
                 )
 
-        # Sort each inner dict by distance
-        taxa_distance[query_taxid] = dict(
-            sorted(taxa_distance[query_taxid].items(), key=lambda item: item[1][0])
-        )
+    df = pd.DataFrame(rows)
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    output_file = os.path.join(output_dir, "ranked_taxa.pkl")
-    with open(output_file, "wb") as f:
-        pickle.dump(taxa_distance, f)
+    tsv_file = os.path.join(output_dir, "ranked_taxa.tsv")
+    df.to_csv(tsv_file, sep="\t", index=False)
 
-    print(
-        f"Saved calculated taxonomic distances for every query species to {output_file}"
-    )
-    return taxa_distance
+    print(f"Saved calculated taxonomic distances for every query species to {tsv_file}")
+    return df

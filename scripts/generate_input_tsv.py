@@ -2,6 +2,7 @@ import os
 import argparse
 import csv
 import pandas as pd
+import pysam
 
 
 def write_sequence(out_f, header, seq, combined):
@@ -15,6 +16,21 @@ def write_sequence(out_f, header, seq, combined):
     out_f.write(f">{header_with_len}\n")
     for i in range(0, seq_len, 80):
         out_f.write(seq[i : i + 80] + "\n")
+
+
+# def process_fasta_file(filepath, prefix, out_f, combined):
+#     """
+#     Reads a single FASTA file using pysam, prepends the prefix to headers,
+#     and writes sequences to the combined file.
+#     """
+#     pysam.faidx(filepath)
+#     fasta = pysam.FastaFile(filepath)
+
+#     for seq_name in fasta.references:
+#         seq = fasta.fetch(seq_name)
+#         raw_id = seq_name.split()[0].strip()
+#         header = f"{raw_id}|{prefix}"
+#         write_sequence(out_f, header, seq, combined)
 
 
 def process_fasta_file(filepath, prefix, out_f, combined):
@@ -49,6 +65,7 @@ def combine_fastas(input_fasta_dir, combined_fasta_file):
     Returns a list of tuples (header, sequence).
     """
     combined = []
+
     with open(combined_fasta_file, "w") as out_f:
         for fname in os.listdir(input_fasta_dir):
             if fname.endswith(".fa"):
