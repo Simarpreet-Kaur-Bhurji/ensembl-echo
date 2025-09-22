@@ -13,7 +13,7 @@ def run_mmseqs(
     coverage=0.8,
     cov_mode=1,
     threads=16,
-    singularity_image="/hps/nobackup/flicek/ensembl/compara/jitender/containers/mmseqs2_latest.sif",
+    singularity_image="mmseqs2_latest.sif",
 ):
     """
     Run MMseqs2 easy-cluster using Singularity and return the cluster file path.
