@@ -1,0 +1,10 @@
+input_fasta_dir: "test/data/input_fastas"
+metadata_tsv: "test/data/test_metadata.tsv"
+outdir: "nextflow_results"
+
+min_seq_id: 0.75
+coverage: 0.8
+cov_mode: 1
+mmseqs_threads: 16
+mmseqs_singularity_image: "../mmseqs2_latest.sif"
+
