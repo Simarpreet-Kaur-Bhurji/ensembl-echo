@@ -2,12 +2,13 @@
 python>=3.10
 
 # Core Python packages
-duckdb==1.1.3
-pandas==2.2.3
-numpy==2.1.1
-pysam==0.21.0
-ete3==3.1.3
-plotly==5.24.1
+pandas>=2.2.3
+numpy>=2.1.1
+matplotlib>=3.8.0
+ete3>=3.1.3
+duckdb>=1.1.3
+pysam>=0.21.0
+pyarrow>=15.0.0 # for pandas parquet support
 
 # Notes:
 # - MMseqs2 must be available either via Singularity image or native installation.
