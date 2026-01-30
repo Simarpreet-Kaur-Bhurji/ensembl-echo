@@ -124,9 +124,8 @@ workdir: "/path/to/work/dir/if/required"
 
 ### Running
 
-Local (small tests)
 ```
-nextflow run main.nf -profile local -params-file params.yaml -with-report
+nextflow run main.nf -profile slurm -params-file params.yaml -with-report
 ```
 
 ### Slurm (recommended)
