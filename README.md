@@ -189,7 +189,7 @@ A small test dataset is included under test/.
 Example:
 
 ```
-nextflow run main.nf -profile local -params-file test/params.test.yaml
+nextflow run main.nf -profile slurm -params-file test/params.test.yaml
 ```
 
 Troubleshooting
