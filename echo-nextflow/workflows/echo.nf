@@ -14,155 +14,180 @@ include { MAKE_ALL_RELATIVES }       from '../modules/make_all_relatives.nf'
 include { MAKE_REPORTS }             from '../modules/make_reports.nf'
 include { MAKE_DIAGNOSTICS }         from '../modules/make_diagnostics.nf'
 
-
 workflow ECHO {
 
   /*
-   * P1 – parse input FASTAs + metadata
+   * Decide whether to reuse existing clustering
    */
-  parsed = PARSE_INPUT_FASTA(
-    file(params.input_fasta_dir),
-    file(params.metadata_tsv)
-  )
+  boolean use_existing = params.existing_clusters_dir != null
+  
+  /*
+   * Define inputs depending on mode
+   */
+  if (use_existing) {
+
+    def base = params.existing_clusters_dir
+    // Fail fast if required files are missing
+    assert file("${base}/processed_input.parquet").exists()
+    assert file("${base}/clusters.parquet").exists()
+    assert file("${base}/remaining_clusters.parquet").exists()
+    assert file("${base}/clusters_with_fewer_tax_ids.fa").exists()
+    assert file("${base}/clusters_with_fewer_taxids_summary.tsv").exists()
+    assert file("${base}/discarded_singletons.fa").exists()
+    assert file("${base}/singleton_cluster_summary.tsv").exists()
+    assert file("${base}/combined_input_fasta.fa").exists()
+
+    processed_parquet     = Channel.value(file("${base}/processed_input.parquet"))
+    clusters_parquet      = Channel.value(file("${base}/clusters.parquet"))
+    remaining_clusters    = Channel.value(file("${base}/remaining_clusters.parquet"))
+    fewer_tax_fa          = Channel.value(file("${base}/clusters_with_fewer_tax_ids.fa"))
+    few_taxids_summary    = Channel.value(file("${base}/clusters_with_fewer_taxids_summary.tsv"))
+    singletons_fa         = Channel.value(file("${base}/discarded_singletons.fa"))
+    singletons_summary    = Channel.value(file("${base}/singleton_cluster_summary.tsv"))
+    combined_fasta        = Channel.value(file("${base}/combined_input_fasta.fa"))
+
+  } else {
+
+    /*
+     * Full pipeline from scratch
+     */
+    parsed = PARSE_INPUT_FASTA(
+      file(params.input_fasta_dir),
+      file(params.metadata_tsv)
+    )
+
+    mm = RUN_MMSEQS(parsed.combined_fasta)
+
+    cl = PARSE_CLUSTERS(
+      mm.cluster_tsv,
+      parsed.processed_parquet
+    )
+
+    filtered = PROCESS_CLUSTERS(cl.clusters_parquet)
+
+    processed_parquet     = parsed.processed_parquet
+    clusters_parquet      = cl.clusters_parquet
+    remaining_clusters    = filtered.remaining_clusters
+    fewer_tax_fa          = filtered.fewer_tax_fa
+    few_taxids_summary    = filtered.few_taxids_summary
+    singletons_fa         = filtered.singletons_fa
+    singletons_summary    = filtered.singletons_summary
+    combined_fasta        = parsed.combined_fasta
+  }
 
   /*
-   * P2 – MMseqs clustering
-   */
-  mm = RUN_MMSEQS(parsed.combined_fasta)
-
-  /*
-   * P3 – parse MMseqs clusters
-   */
-  cl = PARSE_CLUSTERS(
-    mm.cluster_tsv,
-    parsed.processed_parquet
-  )
-
-  /*
-   * P4 – filter clusters (singletons / fewer tax IDs)
-   */
-  filtered = PROCESS_CLUSTERS(cl.clusters_parquet)
-
-  /*
-   * P5 – rank taxa (query × input species distances)
+   * Rank taxa (always recomputed)
    */
   ranked = RANK_TAXA(
-    parsed.processed_parquet,
+    processed_parquet,
     file(params.query_species)
   )
 
   /*
-   * P6 – split remaining clusters into chunk parquet files
+   * Split clusters into chunks
    */
-  chunks = SPLIT_REMAINING_CLUSTERS(filtered.remaining_clusters)
+  chunks = SPLIT_REMAINING_CLUSTERS(remaining_clusters)
   chunk_files = chunks.chunks.flatten()
 
   /*
-   * Load queries: (tax_id, species_name)
+   * Load queries
    */
   queries = Channel
     .fromPath(params.query_species)
     .splitCsv(sep: '\t', header: true)
     .map { row -> tuple(row.tax_id.toString(), row.sps_name.toString()) }
+    .distinct { it[0] }
 
   /*
-   * Build (chunk × query) inputs
+   * Cartesian product: (chunk × query × ranked_taxa)
    */
-
   closest_inputs = chunk_files
     .combine(queries)
-    .combine(ranked.ranked_taxa_tsv)     // (chunk_file, tax_id, query_name, ranked_taxa_tsv)
+    .combine(ranked.ranked_taxa_tsv)
     .map { it ->
-        tuple(it[0], it[3], it[1], it[2])
+      tuple(it[0], it[3], it[1], it[2])
     }
 
-  // chunk_files.combine(queries).view { "PAIR=" + it }
-
   /*
-   * P7 – closest relatives per (chunk × query)
+   * Closest relatives per chunk
    */
   partial = CLOSEST_RELATIVES_CHUNK(closest_inputs)
 
   /*
-   * Merge all chunk logs → single TSV
+   * Merge logs
    */
   merged_logs = MERGE_ALL_LOGS(partial.partial_logs.collect())
 
   /*
-   * P8 – merge chunk FASTAs per query
+   * Merge FASTAs per query
    */
   fastas_grouped = partial.partial_fastas
     .map { fa ->
-      def tax_id = fa.baseName.tokenize('_')[0]   // 78070_chunk_003.fa → 78070
-      tuple(tax_id, fa)
+      def tid = fa.baseName.tokenize('_')[0]
+      tuple(tid, fa)
     }
     .groupTuple()
 
-  merge_inputs = fastas_grouped
+  merged_fastas = fastas_grouped
     .combine(queries)
     .filter { tid1, fas, tid2, name -> tid1 == tid2 }
     .map { tid, fas, _, name ->
-        tuple(tid, name.toLowerCase().replaceAll(' ', '_'), fas)
+      tuple(tid, name.toLowerCase().replaceAll(' ', '_'), fas)
     }
-
-  merged_fastas = MERGE_FASTAS_PER_QUERY(merge_inputs)
+    | MERGE_FASTAS_PER_QUERY
 
   /*
-   * P9 – build *_all_relatives.fa
-   * always includes clusters_with_fewer_tax_ids
-   * optionally includes discarded_singletons
+   * Build *_all_relatives.fa
    */
-  
   all_inputs = merged_fastas.relatives_fa
     .map { fa ->
       def qname = fa.baseName.replaceFirst(/_relatives$/, '')
       tuple(qname, fa)
     }
-    .combine(filtered.fewer_tax_fa)
-    .combine(filtered.singletons_fa)
+    .combine(fewer_tax_fa)
+    .combine(singletons_fa)
     .map { it ->
-          // it = [ qname, relatives_fa, fewer_tax_fa, singletons_fa ]
-         tuple(it[0], it[1], it[2], it[3])
+      tuple(it[0], it[1], it[2], it[3])
     }
-  
+
   all_rel = MAKE_ALL_RELATIVES(all_inputs)
 
+  /*
+   * Diagnostics & reports
+   */
+
   reports = MAKE_REPORTS(
-  cl.clusters_parquet,
-  filtered.remaining_clusters,
-  filtered.few_taxids_summary,
-  filtered.singletons_fa,
-  filtered.fewer_tax_fa,
-  all_rel.all_relatives_fa.collect(),
-  parsed.combined_fasta
-  )
-  
-  diagn = MAKE_DIAGNOSTICS(
-  cl.clusters_parquet,
-  filtered.singletons_summary,
-  filtered.remaining_clusters,
-  filtered.few_taxids_summary,
-  merged_logs.merged_log,
-  parsed.combined_fasta,
-  reports.cluster_summary,
-  reports.pipeline_summary
+    clusters_parquet,
+    remaining_clusters,
+    few_taxids_summary,
+    singletons_fa,
+    fewer_tax_fa,
+    all_rel.all_relatives_fa.collect(),
+    combined_fasta
   )
 
-  /*
-   * Final outputs
-   */
+  diagnostics = MAKE_DIAGNOSTICS(
+    clusters_parquet,
+    singletons_summary,
+    remaining_clusters,
+    few_taxids_summary,
+    merged_logs.merged_log,
+    combined_fasta,
+    reports.cluster_summary,
+    reports.pipeline_summary
+  )
+
   emit:
-    clusters_parquet         = cl.clusters_parquet
-    remaining_clusters       = filtered.remaining_clusters
-    ranked_taxa_tsv          = ranked.ranked_taxa_tsv
-    closest_relatives_log    = merged_logs.merged_log
-    relatives_fastas         = merged_fastas.relatives_fa
-    all_relatives_fastas     = all_rel.all_relatives_fa
+    clusters_parquet          = clusters_parquet
+    remaining_clusters        = remaining_clusters
+    ranked_taxa_tsv           = ranked.ranked_taxa_tsv
+    closest_relatives_log     = merged_logs.merged_log
+    relatives_fastas          = merged_fastas.relatives_fa
+    all_relatives_fa          = all_rel.all_relatives_fa
     cluster_summary_txt       = reports.cluster_summary
     echo_pipeline_summary_txt = reports.pipeline_summary
-    diagnostics_pdf     = diagn.diagnostics_pdf
-    diagnostics_summary  = diagn.diagnostics_summary
-    diagnostics_dir      = diagn.diagnostics_dir
+    diagnostics_pdf           = diagnostics.diagnostics_pdf
+    diagnostics_summary       = diagnostics.diagnostics_summary
+    diagnostics_dir           = diagnostics.diagnostics_dir
 
 }
-

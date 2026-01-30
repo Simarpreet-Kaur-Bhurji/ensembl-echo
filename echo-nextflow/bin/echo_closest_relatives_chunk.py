@@ -62,9 +62,10 @@ def main():
               r.distance ASC,
               c.seq_len DESC,
               CASE COALESCE(c.confidence_level, 'NA')
-                WHEN 'high1' THEN 1
-                WHEN 'high2' THEN 2
-                WHEN 'high3' THEN 3
+                WHEN 'high' THEN 1
+                WHEN 'high1' THEN 2
+                WHEN 'high2' THEN 3
+                WHEN 'high3' THEN 4
                 ELSE 99
               END ASC
           ) AS rn_taxon

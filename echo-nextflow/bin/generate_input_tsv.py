@@ -75,6 +75,7 @@ def combine_fastas(input_fasta_dir, combined_fasta_file):
                     .removesuffix(".prots.fa")
                     .removesuffix(".prots.hm.fa")
                     .removesuffix(".fa")
+                    .replace(" ", "_").replace("'", "").replace("-", "_").lower()
                 )
                 filepath = os.path.join(input_fasta_dir, fname)
                 process_fasta_file(filepath, prefix, out_f, combined)
@@ -88,11 +89,12 @@ def load_species_info(tsv_file):
         headers = reader.fieldnames
         for row in reader:
             sci_name = row["Scientific name"].strip()
-            parts = sci_name.split()[:3]
-            if len(parts) < 2:
-                norm_name = parts[0].lower()
-            else:
-                norm_name = "_".join(parts).lower()
+            norm_name = sci_name.replace(" ", "_").replace("'", "").replace("-", "_").lower()
+            # parts = sci_name.split()[:3]
+            # if len(parts) < 2:
+            #     norm_name = parts[0].lower()
+            # else:
+            #     norm_name = "_".join(parts).lower()
             # print(f"processed names: {norm_name}, tsv name: {sci_name}, tax_id: {row.get('Species taxon_id', 'NA')}")
             # norm_name = sci_name.lower().replace(
             #    " ", "_"
