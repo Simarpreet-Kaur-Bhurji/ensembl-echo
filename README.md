@@ -90,6 +90,8 @@ You typically set:
 - singularity_image
 - MMseqs settings: min_seq_id, coverage, cov_mode, threads
 - optional: with_singletons
+- optional: existing_clusters_dir
+- optional: workdir
 
 Example snippet:
 
@@ -109,7 +111,16 @@ cov_mode: 1
 threads: 16
 
 with_singletons: false
+existing_clusters_dir: "/path/to/existing/clusters/dir"
+workdir: "/path/to/work/dir/if/required"
 ```
+
+#### Note:
+
+- existing_clusters_dir: Path to a directory containing outputs from a previous ECHO run (e.g. processed_input.parquet, clusters.parquet, remaining_clusters.parquet, etc.)..
+- workdir: By default, Nextflow creates the work directory in the location where the pipeline is executed. 
+  You can optionally set workDir in nextflow.config to specify a custom location for the work directory
+
 
 ### Running
 
@@ -168,7 +179,7 @@ Common key outputs:
   <query_name>_relatives.fa
   <query_name>_all_relatives.fa (adds common clusters-with-fewer-taxids and optionally singletons)
 - Diagnostics:
-  diagnostics_out/diagnostics.html
+  diagnostics_out/diagnostics.pdf
   diagnostics_out/*.png
 - Nextflow report:
   report.html (written where you run Nextflow unless configured otherwise)
