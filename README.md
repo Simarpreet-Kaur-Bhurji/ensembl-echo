@@ -57,6 +57,7 @@ a valid MMseqs image path in params (e.g. params.singularity_image.sif)
 ### Inputs
 FASTA directory (params.input_fasta_dir)
 A directory containing per-species protein FASTA files (*.fa), e.g.
+Note: The headers of the fasta file must contain protein ids only. 
 
 ```
 input_fastas/
