@@ -10,11 +10,21 @@ process MERGE_ALL_LOGS {
 
   script:
   """
-  # keep only first header
-  first=\$(ls -1 ${logs} | head -n 1)
-  head -n 1 "\$first" > closest_relatives_log.tsv || true
-  for f in ${logs}; do
-    tail -n +2 "\$f" >> closest_relatives_log.tsv || true
+  set -euo pipefail
+
+  out="closest_relatives_log.tsv"
+  : > "\$out"
+
+  files=( ${logs} )
+
+  if [[ \${#files[@]} -eq 0 ]]; then
+    exit 0
+  fi
+
+  head -n 1 "\${files[0]}" > "\$out" || true
+
+  for f in "\${files[@]}"; do
+    tail -n +2 "\$f" >> "\$out" || true
   done
   """
 }
