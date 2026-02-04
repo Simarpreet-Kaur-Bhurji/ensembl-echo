@@ -1,6 +1,5 @@
 process MERGE_FASTAS_PER_QUERY {
   tag { query_name }
-  publishDir params.outdir, mode: 'copy'
 
   input:
     tuple val(query_tax_id), val(query_name), path(fasta_parts)
