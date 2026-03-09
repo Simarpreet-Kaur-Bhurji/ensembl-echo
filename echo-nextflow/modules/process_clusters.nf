@@ -1,3 +1,9 @@
+/* Step 4: Filter clusters by taxon diversity and singleton status.
+ * Input:  clusters.parquet
+ * Output: remaining_clusters.parquet (pass-through clusters)
+ *         discarded_singletons.fa + summary (optional, if any singletons)
+ *         clusters_with_fewer_tax_ids.fa + summary (optional, if any under-represented)
+ */
 process PROCESS_CLUSTERS {
 
   tag "process_clusters"

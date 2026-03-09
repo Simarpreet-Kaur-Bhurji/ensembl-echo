@@ -1,3 +1,8 @@
+/* Step 9: Assemble the final all_relatives FASTA for each query.
+ * Input:  relatives_fa (from MERGE_FASTAS_PER_QUERY), fewer_tax_fa, singletons_fa
+ * Output: {query_name}_all_relatives.fa
+ * Singletons are included only when params.with_singletons is true.
+ */
 process MAKE_ALL_RELATIVES {
   tag { query_name }
   publishDir params.outdir, mode: 'copy'

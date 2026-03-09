@@ -1,3 +1,7 @@
+/* Step 8b: Merge all per-chunk FASTA parts for a single query into one file.
+ * Input:  list of partial FASTA files for one query (all chunks)
+ * Output: {query_name}_relatives.fa — complete relative sequences for that query
+ */
 process MERGE_FASTAS_PER_QUERY {
   tag { query_name }
 

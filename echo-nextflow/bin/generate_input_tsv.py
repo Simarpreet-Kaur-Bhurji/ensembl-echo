@@ -1,153 +1,271 @@
+# See the NOTICE file distributed with this work for additional information
+# regarding copyright ownership.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+generate_input_tsv.py
+---------------------
+Core input-processing library for ECHO pipeline step 1.
+
+Responsibilities:
+  1. load_species_info()         – parse the 4-column metadata TSV into a species map
+  2. resolve_file_path()         – resolve relative/absolute FASTA paths
+  3. combine_fastas_from_map()   – read per-species FASTAs, emit a single combined FASTA
+  4. write_protein_metadata()    – join combined FASTA with species map → TSV + Parquet
+
+Header format used throughout the pipeline:
+    {protein_id}|{sps_name}_{taxon_id}_{gca}|{seq_len}
+
+The composite species key (sps_name_taxon_id_gca) is the species identifier in:
+  - the FASTA header (field 2, |-delimited)
+  - the 'name' column of processed_input.parquet
+  - the keys of the species_map dict returned by load_species_info()
+"""
+
 import os
-import argparse
 import csv
 import pandas as pd
-import pysam
 
 
-def write_sequence(out_f, header, seq, combined):
+# ---------------------------------------------------------------------------
+# Low-level FASTA helpers
+# ---------------------------------------------------------------------------
+
+
+def write_sequence(out_f, header, seq, combined, line_width=60):
     """
-    Writes a sequence to the combined FASTA file with header length.
-    Appends the sequence to the combined list.
+    Write one sequence to the combined FASTA and append to the in-memory list.
+
+    The sequence length is appended to the header so downstream code can read
+    it back from the header without re-computing it:
+        {protein_id}|{species_key}  →  {protein_id}|{species_key}|{seq_len}
+
+    Args:
+        out_f      : open file handle for the combined FASTA
+        header     : header string (without leading '>')
+        seq        : full sequence string
+        combined   : list accumulating (header, seq) tuples in memory
+        line_width : characters per sequence line (default 60; set via params.fasta_line_width)
     """
     seq_len = len(seq)
     header_with_len = f"{header}|{seq_len}"
     combined.append((header_with_len, seq))
     out_f.write(f">{header_with_len}\n")
-    for i in range(0, seq_len, 80):
-        out_f.write(seq[i : i + 80] + "\n")
+    for i in range(0, seq_len, line_width):
+        out_f.write(seq[i : i + line_width] + "\n")
 
 
-# def process_fasta_file(filepath, prefix, out_f, combined):
-#     """
-#     Reads a single FASTA file using pysam, prepends the prefix to headers,
-#     and writes sequences to the combined file.
-#     """
-#     pysam.faidx(filepath)
-#     fasta = pysam.FastaFile(filepath)
-
-#     for seq_name in fasta.references:
-#         seq = fasta.fetch(seq_name)
-#         raw_id = seq_name.split()[0].strip()
-#         header = f"{raw_id}|{prefix}"
-#         write_sequence(out_f, header, seq, combined)
-
-
-def process_fasta_file(filepath, prefix, out_f, combined):
+def process_fasta_file(filepath, prefix, out_f, combined, line_width=60):
     """
-    Reads a single FASTA file, prepends the prefix to headers,
-    and writes sequences to the combined file.
+    Stream-parse a single FASTA file (no index required), prepend the species
+    prefix to each protein header, and write to the combined FASTA.
+
+    Output header per sequence:
+        {raw_protein_id}|{prefix}|{seq_len}
+
+    Args:
+        filepath   : path to the input FASTA
+        prefix     : species key (sps_name_taxon_id_gca) prepended to headers
+        out_f      : open file handle for the combined FASTA
+        combined   : list accumulating (header, seq) tuples in memory
+        line_width : characters per sequence line (passed through to write_sequence)
     """
     header = None
     seq_lines = []
-    with open(filepath) as f:
+    with open(filepath, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line.startswith(">"):
+                # flush the previous record before starting a new one
                 if header and seq_lines:
-                    seq = "".join(seq_lines)
-                    write_sequence(out_f, header, seq, combined)
-                # Normalize header: take first token before any space
+                    write_sequence(
+                        out_f, header, "".join(seq_lines), combined, line_width
+                    )
+                # take only the first token so spaces in FASTA headers don't propagate
                 raw_id = line[1:].strip().split()[0]
                 header = f"{raw_id}|{prefix}"
                 seq_lines = []
             else:
                 seq_lines.append(line)
-        # Write last sequence in the file
+        # flush the final record in the file
         if header and seq_lines:
-            seq = "".join(seq_lines)
-            write_sequence(out_f, header, seq, combined)
+            write_sequence(out_f, header, "".join(seq_lines), combined, line_width)
 
 
-def combine_fastas(input_fasta_dir, combined_fasta_file):
-    """
-    Combine all FASTA files in input_fasta_dir into a single FASTA file.
-    Returns a list of tuples (header, sequence).
-    """
-    combined = []
-
-    with open(combined_fasta_file, "w") as out_f:
-        for fname in os.listdir(input_fasta_dir):
-            if fname.endswith(".fa"):
-                prefix = (
-                    fname.removesuffix("_canonical_proteins.fa")
-                    .removesuffix(".high_medium.fa")
-                    .removesuffix(".prots.fa")
-                    .removesuffix(".prots.hm.fa")
-                    .removesuffix(".fa")
-                    .replace(" ", "_").replace("'", "").replace("-", "_").lower()
-                )
-                filepath = os.path.join(input_fasta_dir, fname)
-                process_fasta_file(filepath, prefix, out_f, combined)
-    return combined
+# ---------------------------------------------------------------------------
+# Metadata TSV loading
+# ---------------------------------------------------------------------------
 
 
 def load_species_info(tsv_file):
+    """
+    Load species metadata from the 4-column metadata TSV.
+
+    Expected columns (tab-separated, with header row):
+      - sps_name   : normalised species name (e.g. homo_sapiens)
+      - taxon_id   : NCBI taxon ID
+      - gca        : genome assembly accession, or NA
+      - file_path  : path to the species FASTA — absolute, OR a bare filename /
+                     relative path resolved against --input_fasta_dir at runtime
+
+    Returns:
+        dict keyed by the composite identifier  {sps_name}_{taxon_id}_{gca}.
+
+    The composite key is used as the species prefix in every FASTA header and
+    in the 'name' column of the output parquet, ensuring two assemblies of the
+    same species (same sps_name, different gca) are always distinguishable.
+    """
     mapping = {}
-    with open(tsv_file, newline="") as f:
+    print(f"[load_species_info] reading: {tsv_file}")
+    with open(tsv_file, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f, delimiter="\t")
-        headers = reader.fieldnames
+        print(f"[load_species_info] columns detected: {reader.fieldnames}")
         for row in reader:
-            sci_name = row["Scientific name"].strip()
-            norm_name = sci_name.replace(" ", "_").replace("'", "").replace("-", "_").lower()
-            # parts = sci_name.split()[:3]
-            # if len(parts) < 2:
-            #     norm_name = parts[0].lower()
-            # else:
-            #     norm_name = "_".join(parts).lower()
-            # print(f"processed names: {norm_name}, tsv name: {sci_name}, tax_id: {row.get('Species taxon_id', 'NA')}")
-            # norm_name = sci_name.lower().replace(
-            #    " ", "_"
-            # )  # e.g. "Octopus rubescens" -> "octopus_rubescens"
-            mapping[norm_name] = {
-                "name": sci_name,
-                "tax_id": row.get("Species taxon_id", "NA"),
-                "confidence_score": (
-                    row.get("confidence score", "NA")
-                    if "confidence score" in headers
-                    else "NA"
-                ),
-                "confidence_level": (
-                    row.get("confidence level", "NA")
-                    if "confidence level" in headers
-                    else "NA"
-                ),
+            sps_name = row["sps_name"].strip().replace(" ", "_")
+            taxon_id = row["taxon_id"].strip()
+            gca = row.get("gca", "NA").strip()
+            # composite key uniquely identifies one assembly
+            key = f"{sps_name}_{taxon_id}_{gca}"
+            mapping[key] = {
+                "name": key,  # stored as 'name' in the parquet
+                "tax_id": taxon_id,
+                "gca": gca,
+                "file_path": row["file_path"].strip(),
+                "confidence_score": "NA",
+                "confidence_level": "NA",
             }
-            print(f"Mapping added for {norm_name}: {mapping[norm_name]}")
+            print(
+            f"  [load_species_info] loaded: key={key!r}  taxon_id={taxon_id}"
+            f" file_path={mapping[key]['file_path']!r}"
+            )
+    print(f"[load_species_info] total species loaded: {len(mapping)}")
     return mapping
+
+
+# ---------------------------------------------------------------------------
+# File-path resolution
+# ---------------------------------------------------------------------------
+
+
+def resolve_file_path(file_path, input_fasta_dir=None):
+    """
+    Resolve a file_path entry from the metadata TSV to an accessible path.
+
+    Resolution order:
+      1. Absolute path in TSV  →  used as-is
+      2. Relative path + input_fasta_dir given  →  joined with input_fasta_dir
+      3. Relative path, no input_fasta_dir  →  relative to CWD (caller's responsibility)
+    """
+    if os.path.isabs(file_path):
+        return file_path
+    if input_fasta_dir:
+        return os.path.join(input_fasta_dir, file_path)
+    return file_path
+
+
+# ---------------------------------------------------------------------------
+# FASTA combining
+# ---------------------------------------------------------------------------
+
+
+def combine_fastas_from_map(
+    species_map, combined_fasta_file, input_fasta_dir=None, line_width=60
+):
+    """
+    Combine per-species FASTA files (listed in species_map) into one file.
+
+    Each species' FASTA path comes from species_map[key]['file_path'], resolved
+    via resolve_file_path().  The composite species key is embedded in every
+    output header as the species prefix.
+
+    Args:
+        species_map         : dict returned by load_species_info()
+        combined_fasta_file : output path for the merged FASTA
+        input_fasta_dir     : optional base directory for relative file_path values
+        line_width          : characters per sequence line in the output FASTA (default 60)
+
+    Returns:
+        list of (header, sequence) tuples (all sequences, in TSV order)
+    """
+    combined = []
+    print(f"[combine_fastas_from_map] output: {combined_fasta_file}")
+    print(
+        f"[combine_fastas_from_map] input_fasta_dir (base for relative paths): {input_fasta_dir!r}"
+    )
+    print(f"[combine_fastas_from_map] fasta line width: {line_width}")
+
+    with open(combined_fasta_file, "w", encoding="utf-8") as out_f:
+        for species_key, info in species_map.items():
+            filepath = resolve_file_path(info["file_path"], input_fasta_dir)
+            print(
+                f"  [combine_fastas_from_map] processing: {species_key!r}  ->  {filepath}"
+            )
+            if not os.path.exists(filepath):
+                raise FileNotFoundError(
+                    f"FASTA not found for {species_key!r}: {filepath}\n"
+                    f"  (file_path in TSV: {info['file_path']!r}, input_fasta_dir: {input_fasta_dir!r})"
+                )
+            before = len(combined)
+            process_fasta_file(filepath, species_key, out_f, combined, line_width)
+            print(f"    -> {len(combined) - before} sequences added")
+
+    print(f"[combine_fastas_from_map] total sequences: {len(combined)}")
+    return combined
+
+
+# ---------------------------------------------------------------------------
+# Metadata output (TSV + Parquet)
+# ---------------------------------------------------------------------------
 
 
 def header_to_species_key(header):
     """
-    Convert FASTA header species part to TSV scientific name key for lookup.
-    E.g., 'archivesica_marissinica_gca014843695v1' -> 'archivesica_marissinica'
+    Extract the composite species key from a combined FASTA header.
+
+    Header format:  {protein_id}|{sps_name}_{taxon_id}_{gca}|{seq_len}
+    Returns field [1], which is the key used to look up species_map.
     """
     try:
-        species_part = header.split("|")[1]  # second field is species prefix
+        return header.split("|")[1]
     except IndexError:
-        species_part = "unknown"
-
-    # Split on '_gca' if present, otherwise take the full string
-    # species_base = (
-    #     species_part.split("_gca")[0] if "_gca" in species_part else species_part
-    # )
-
-    # parts = species_base.split("_")
-    # return "_".join(parts[:2]).lower()
-    return species_part
+        return "unknown"
 
 
-def write_protein_metadata(combined_fasta, species_map, output_tsv, out_parquet):
+def write_protein_metadata(combined_fasta, species_map, output_tsv, _out_parquet):
     """
-    Write protein metadata TSV from combined FASTA sequences.
-    - Protein ID from header
-    - Scientific name and taxon ID from species_map
-    - Sequence length from header
-    - Confidence score and level if present
+    Write per-protein metadata to a TSV and a Parquet file.
+
+    For each sequence in combined_fasta:
+      - protein_id and seq_len are parsed from the header
+      - name, tax_id, gca are looked up from species_map via the composite key
+
+    Output columns (both TSV and Parquet):
+        protein_id, name, sequence_length, tax_id, gca,
+        confidence_score, confidence_level
+
+    The Parquet additionally stores the full header and sequence for downstream
+    cluster-joining (parse_cluster_file uses header as the join key).
+
+    Args:
+        combined_fasta : list of (header, seq) tuples from combine_fastas_from_map()
+        species_map    : dict from load_species_info()
+        output_tsv     : path for the output TSV
+        out_parquet    : path for the output Parquet (ignored here; derived from output_tsv)
     """
     rows = []
+    unmatched = set()
 
-    with open(output_tsv, "w", newline="") as out:
+    with open(output_tsv, "w", newline="", encoding="utf-8") as out:
         writer = csv.writer(out, delimiter="\t")
         writer.writerow(
             [
@@ -155,6 +273,7 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv, out_parquet)
                 "name",
                 "sequence_length",
                 "tax_id",
+                "gca",
                 "confidence_score",
                 "confidence_level",
             ]
@@ -163,42 +282,45 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv, out_parquet)
         for header, seq in combined_fasta:
             parts = header.split("|")
             if len(parts) < 3:
-                raise ValueError(f"Header not in expected format: {header}")
+                raise ValueError(f"Header not in expected format: {header!r}")
 
             protein_id = parts[0]
+            # seq_len was appended by write_sequence(); fall back to computing it
             seq_len_str = parts[-1]
-            if not seq_len_str.isdigit():
-                seq_len = len(seq)
-            else:
-                seq_len = int(seq_len_str)
+            seq_len = int(seq_len_str) if seq_len_str.isdigit() else len(seq)
 
-            # Normalize species for lookup
+            # look up species metadata using the composite key embedded in the header
             species_key = header_to_species_key(header)
-            # print(f"Looking up species key: {species_key} for header: {header}")
-            info = species_map.get(
-                species_key,
-                {
-                    "name": "NA",
+            info = species_map.get(species_key)
+            if info is None:
+                # warn once per unmatched key; write NA values so the run doesn't abort
+                if species_key not in unmatched:
+                    print(
+                    f"  [write_protein_metadata] WARNING: no metadata match"
+                    f" for key {species_key!r} — writing NA"
+                    )
+                    unmatched.add(species_key)
+                info = {
+                    "name": species_key,  # preserve the key so the header join still works
                     "tax_id": "NA",
+                    "gca": "NA",
                     "confidence_score": "NA",
                     "confidence_level": "NA",
-                },
-            )
-            # print(f"Retrieved info: {info}")
+                }
 
-            # Write TSV row
             writer.writerow(
                 [
                     protein_id,
                     info["name"],
                     seq_len,
                     info["tax_id"],
+                    info["gca"],
                     info["confidence_score"],
                     info["confidence_level"],
                 ]
             )
 
-            # Collect row for Parquet
+            # parquet row includes header + sequence for downstream cluster joining
             rows.append(
                 [
                     header,
@@ -206,14 +328,19 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv, out_parquet)
                     protein_id,
                     info["name"],
                     info["tax_id"],
+                    info["gca"],
                     info["confidence_score"],
                     info["confidence_level"],
                     seq_len,
                 ]
             )
 
-    # Write Parquet with sequence included
-    # parquet_file = os.path.splitext(output_tsv)[0] + ".parquet"
+    if unmatched:
+        print(
+        f"[write_protein_metadata] WARNING: {len(unmatched)}"
+        f" unmatched species key(s): {sorted(unmatched)}"
+        )
+
     df = pd.DataFrame(
         rows,
         columns=[
@@ -222,23 +349,15 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv, out_parquet)
             "protein_id",
             "name",
             "tax_id",
+            "gca",
             "confidence_score",
             "confidence_level",
             "seq_len",
         ],
     )
 
+    # derive parquet path from TSV path (same stem, different extension)
     parquet_file = output_tsv.rsplit(".", 1)[0] + ".parquet"
     df.to_parquet(parquet_file, index=False)
-    print(f"Parquet file (with sequences) written to: {parquet_file}")
-
-
-# species_map = load_species_info("/hps/nobackup/flicek/ensembl/compara/sbhurji/Development/ECHO_project/vgp_set/ensembl_verts_metadata.tsv")
-# output_dir = "/hps/nobackup/flicek/ensembl/compara/sbhurji/Development/ECHO_project/vgp_set/vgp_set_output"
-# combine_fasta_name = os.path.join(output_dir, "combined_input_fasta_debug.fa")
-# input_fasta_dir = "/hps/nobackup/flicek/ensembl/compara/sbhurji/Development/ECHO_project/vgp_set/input_protein_fastas"
-# metadata_tsv = "/hps/nobackup/flicek/ensembl/compara/sbhurji/Development/ECHO_project/vgp_set/ensembl_verts_metadata.tsv"
-# combined = combine_fastas(input_fasta_dir, combine_fasta_name)
-# species_map = load_species_info(metadata_tsv)
-# processed_input_tsv = os.path.join(output_dir, "debug_301125.tsv")
-# write_protein_metadata(combined, species_map, processed_input_tsv)
+    print(f"[write_protein_metadata] wrote {len(df)} proteins → {output_tsv}")
+    print(f"[write_protein_metadata] wrote parquet               → {parquet_file}")

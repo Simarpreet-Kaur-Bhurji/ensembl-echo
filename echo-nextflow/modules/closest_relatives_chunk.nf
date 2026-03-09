@@ -1,3 +1,8 @@
+/* Step 7 (parallel): Find the N closest relatives for each query within one chunk.
+ * Input:  one chunk parquet, ranked_taxa.tsv, query_tax_id, query_name
+ * Output: partial FASTA and log TSV for this (query × chunk) combination
+ * One process instance runs per (query × chunk) pair.
+ */
 process CLOSEST_RELATIVES_CHUNK {
   tag { "${query_tax_id}_${chunk_file.simpleName}" }
 

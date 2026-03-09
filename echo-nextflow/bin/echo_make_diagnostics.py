@@ -1,14 +1,31 @@
 #!/usr/bin/env python3
+
+# See the NOTICE file distributed with this work for additional information
+# regarding copyright ownership.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import argparse
 import os
 import math
+from datetime import datetime
+
 import pandas as pd
 import numpy as np
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-from datetime import datetime
 
 
 # -----------------------------
@@ -20,7 +37,7 @@ def ensure_dir(path: str):
 
 def count_fasta_headers(path: str) -> int:
     n = 0
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             if line.startswith(">"):
                 n += 1
@@ -28,7 +45,7 @@ def count_fasta_headers(path: str) -> int:
 
 
 def read_tsv_rows(tsv_path: str) -> int:
-    with open(tsv_path) as fh:
+    with open(tsv_path, encoding="utf-8") as fh:
         next(fh, None)  # header
         return sum(1 for _ in fh)
 
@@ -46,7 +63,7 @@ def annotate_peak(ax, x_vals, y_vals, label_prefix="Peak"):
         xy=(x, y),
         xytext=(10, 10),
         textcoords="offset points",
-        arrowprops=dict(arrowstyle="->", lw=1),
+        arrowprops={"arrowstyle": "->", "lw": 1},
         fontsize=9,
     )
 
@@ -60,9 +77,9 @@ def savefig(fig, pdf_pages, png_path):
 def add_text_page(pdf_pages, title, content):
     """Add a text page to the PDF."""
     fig, ax = plt.subplots(figsize=(8.5, 11))  # Letter size
-    ax.axis('off')
-    ax.text(0.05, 0.95, title, fontsize=14, fontweight='bold', va='top')
-    ax.text(0.05, 0.90, content, fontsize=10, va='top')
+    ax.axis("off")
+    ax.text(0.05, 0.95, title, fontsize=14, fontweight="bold", va="top")
+    ax.text(0.05, 0.90, content, fontsize=10, va="top")
     pdf_pages.savefig(fig)
     plt.close(fig)
 
@@ -90,10 +107,19 @@ def plot_cluster_size_distribution(cluster_sizes: pd.Series, pdf_pages, png_path
     if sizes.empty:
         # still produce empty plot
         fig, ax = plt.subplots()
-        ax.set_title("Cluster size distribution (proteins per cluster; excluding singletons)")
+        ax.set_title(
+            "Cluster size distribution (proteins per cluster; excluding singletons)"
+        )
         ax.set_xlabel("Proteins per cluster")
         ax.set_ylabel("log10(#clusters + 1)")
-        ax.text(0.5, 0.5, "No non-singleton clusters", ha="center", va="center", transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "No non-singleton clusters",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+        )
         savefig(fig, pdf_pages, png_path)
         return
 
@@ -104,7 +130,9 @@ def plot_cluster_size_distribution(cluster_sizes: pd.Series, pdf_pages, png_path
 
     fig, ax = plt.subplots()
     ax.plot(x, ylog, marker="o", linestyle="-")
-    ax.set_title("Cluster size distribution (proteins per cluster; excluding singletons)")
+    ax.set_title(
+        "Cluster size distribution (proteins per cluster; excluding singletons)"
+    )
     ax.set_xlabel("Proteins per cluster")
     ax.set_ylabel("log10(#clusters + 1)")
     annotate_peak(ax, x, y, label_prefix="Peak (raw)")
@@ -131,7 +159,14 @@ def plot_unique_taxids_distribution(unique_taxids: pd.Series, pdf_pages, png_pat
     savefig(fig, pdf_pages, png_path)
 
 
-def plot_retained_vs_discarded(total_clusters: int, singleton_clusters: int, few_taxid_clusters: int, valid_clusters: int, pdf_pages, png_path):
+def plot_retained_vs_discarded(
+    _total_clusters: int,
+    singleton_clusters: int,
+    few_taxid_clusters: int,
+    valid_clusters: int,
+    pdf_pages,
+    png_path,
+):
     """
     Simple 3-bar plot: singletons, fewer-taxid, valid clusters.
     """
@@ -161,7 +196,14 @@ def plot_taxonomic_distance_distribution(closest_log_tsv: str, pdf_pages, png_pa
         # handle: either list-like column or pre-exploded distances
         fig, ax = plt.subplots()
         ax.set_title("Taxonomic distance distribution")
-        ax.text(0.5, 0.5, "No distance column found in closest log", ha="center", va="center", transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "No distance column found in closest log",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+        )
         savefig(fig, pdf_pages, png_path)
         return
 
@@ -186,16 +228,29 @@ def plot_taxonomic_distance_distribution(closest_log_tsv: str, pdf_pages, png_pa
                         except ValueError:
                             pass
 
-    distances = [d for d in distances if d is not None and not (isinstance(d, float) and math.isnan(d))]
+    distances = [
+        d
+        for d in distances
+        if d is not None and not (isinstance(d, float) and math.isnan(d))
+    ]
     if not distances:
         fig, ax = plt.subplots()
         ax.set_title("Taxonomic distance distribution")
-        ax.text(0.5, 0.5, "No distances found", ha="center", va="center", transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "No distances found",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+        )
         savefig(fig, pdf_pages, png_path)
         return
 
     distances = np.array(distances, dtype=float)
-    print(f"DEBUG: distances count={len(distances)}, min={np.min(distances)}, max={np.max(distances)}")
+    print(
+        f"DEBUG: distances count={len(distances)}, min={np.min(distances)}, max={np.max(distances)}"
+    )
     fig, ax = plt.subplots()
     ax.hist(distances, bins=40)
     ax.set_title("Taxonomic distance distribution (closest relatives)")
@@ -215,14 +270,16 @@ def plot_taxonomic_distance_distribution(closest_log_tsv: str, pdf_pages, png_pa
         fontsize=9,
         ha="left",
         va="top",
-        bbox=dict(boxstyle="round,pad=0.3", alpha=0.15),
+        bbox={"boxstyle": "round,pad=0.3", "alpha": 0.15},
     )
 
     ax.grid(True, axis="y", alpha=0.3)
     savefig(fig, pdf_pages, png_path)
 
 
-def plot_size_vs_taxid_scatter(cluster_sizes: pd.Series, unique_taxids: pd.Series, pdf_pages, png_path):
+def plot_size_vs_taxid_scatter(
+    cluster_sizes: pd.Series, unique_taxids: pd.Series, pdf_pages, png_path
+):
     """
     Scatter: proteins per cluster vs unique tax IDs.
     """
@@ -241,15 +298,15 @@ def plot_size_vs_taxid_scatter(cluster_sizes: pd.Series, unique_taxids: pd.Serie
     yb = np.clip(y, 1, 200)
     hx, xedges, yedges = np.histogram2d(xb, yb, bins=[50, 40])
     pi = np.unravel_index(np.argmax(hx), hx.shape)
-    x0 = (xedges[pi[0]] + xedges[pi[0]+1]) / 2
-    y0 = (yedges[pi[1]] + yedges[pi[1]+1]) / 2
+    x0 = (xedges[pi[0]] + xedges[pi[0] + 1]) / 2
+    y0 = (yedges[pi[1]] + yedges[pi[1] + 1]) / 2
     ax.scatter([x0], [y0], s=60)
     ax.annotate(
         f"Highest density ~ ({x0:.0f}, {y0:.0f})",
         xy=(x0, y0),
         xytext=(10, 10),
         textcoords="offset points",
-        arrowprops=dict(arrowstyle="->", lw=1),
+        arrowprops={"arrowstyle": "->", "lw": 1},
         fontsize=9,
     )
 
@@ -260,7 +317,9 @@ def plot_size_vs_taxid_scatter(cluster_sizes: pd.Series, unique_taxids: pd.Serie
 # HTML report
 # -----------------------------
 def write_html(out_html: str, title: str, run_meta: dict, cards_html: str):
-    meta_rows = "\n".join([f"<tr><th>{k}</th><td>{v}</td></tr>" for k, v in run_meta.items()])
+    meta_rows = "\n".join(
+        [f"<tr><th>{k}</th><td>{v}</td></tr>" for k, v in run_meta.items()]
+    )
     html = f"""<!doctype html>
 <html>
 <head>
@@ -295,7 +354,7 @@ def write_html(out_html: str, title: str, run_meta: dict, cards_html: str):
 </body>
 </html>
 """
-    with open(out_html, "w") as f:
+    with open(out_html, "w", encoding="utf-8") as f:
         f.write(html)
 
 
@@ -331,8 +390,12 @@ def main():
     valid_clusters = int(rdf["Cluster_ID"].nunique())
 
     # cluster discard counts from summary TSVs (cluster counts)
-    singleton_clusters = read_tsv_rows(args.singleton_summary_tsv)  # number of singleton clusters
-    few_taxid_clusters = read_tsv_rows(args.few_taxids_summary_tsv)  # number of few-taxid clusters
+    singleton_clusters = read_tsv_rows(
+        args.singleton_summary_tsv
+    )  # number of singleton clusters
+    few_taxid_clusters = read_tsv_rows(
+        args.few_taxids_summary_tsv
+    )  # number of few-taxid clusters
 
     # seq counts
     total_input_seqs = count_fasta_headers(args.input_fasta)
@@ -343,12 +406,12 @@ def main():
         # Add summary page if files provided
         summary_content = ""
         if args.cluster_summary_txt and os.path.exists(args.cluster_summary_txt):
-            with open(args.cluster_summary_txt, 'r') as f:
+            with open(args.cluster_summary_txt, "r", encoding="utf-8") as f:
                 summary_content += f.read() + "\n\n"
         if args.pipeline_summary_txt and os.path.exists(args.pipeline_summary_txt):
-            with open(args.pipeline_summary_txt, 'r') as f:
+            with open(args.pipeline_summary_txt, "r", encoding="utf-8") as f:
                 summary_content += f.read() + "\n\n"
-        
+
         if summary_content:
             plot_descriptions = """
 Plot Descriptions:
@@ -372,13 +435,37 @@ Plot Descriptions:
 """
             full_content = summary_content + plot_descriptions
             add_text_page(pdf_pages, "ECHO Pipeline Diagnostics Summary", full_content)
-        
+
         # Make plots
-        plot_cluster_size_distribution(cluster_sizes, pdf_pages, os.path.join(args.outdir, "plot1_cluster_size_distribution.png"))
-        plot_unique_taxids_distribution(unique_taxids, pdf_pages, os.path.join(args.outdir, "plot2_unique_taxids_distribution.png"))
-        plot_retained_vs_discarded(total_clusters, singleton_clusters, few_taxid_clusters, valid_clusters, pdf_pages, os.path.join(args.outdir, "plot3_cluster_retention_summary.png"))
-        plot_taxonomic_distance_distribution(args.closest_log_tsv, pdf_pages, os.path.join(args.outdir, "plot5_taxonomic_distance_distribution.png"))
-        plot_size_vs_taxid_scatter(cluster_sizes, unique_taxids, pdf_pages, os.path.join(args.outdir, "plot6_size_vs_taxid_scatter.png"))
+        plot_cluster_size_distribution(
+            cluster_sizes,
+            pdf_pages,
+            os.path.join(args.outdir, "plot1_cluster_size_distribution.png"),
+        )
+        plot_unique_taxids_distribution(
+            unique_taxids,
+            pdf_pages,
+            os.path.join(args.outdir, "plot2_unique_taxids_distribution.png"),
+        )
+        plot_retained_vs_discarded(
+            total_clusters,
+            singleton_clusters,
+            few_taxid_clusters,
+            valid_clusters,
+            pdf_pages,
+            os.path.join(args.outdir, "plot3_cluster_retention_summary.png"),
+        )
+        plot_taxonomic_distance_distribution(
+            args.closest_log_tsv,
+            pdf_pages,
+            os.path.join(args.outdir, "plot5_taxonomic_distance_distribution.png"),
+        )
+        plot_size_vs_taxid_scatter(
+            cluster_sizes,
+            unique_taxids,
+            pdf_pages,
+            os.path.join(args.outdir, "plot6_size_vs_taxid_scatter.png"),
+        )
 
     # Run meta table
     run_meta = {
@@ -394,7 +481,7 @@ Plot Descriptions:
     }
 
     # Also write a tiny text summary for convenience
-    with open(os.path.join(args.outdir, "diagnostics_summary.txt"), "w") as f:
+    with open(os.path.join(args.outdir, "diagnostics_summary.txt"), "w", encoding="utf-8") as f:
         for k, v in run_meta.items():
             f.write(f"{k}\t{v}\n")
 
@@ -403,4 +490,3 @@ Plot Descriptions:
 
 if __name__ == "__main__":
     main()
-

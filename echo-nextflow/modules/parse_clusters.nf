@@ -1,3 +1,7 @@
+/* Step 3: Join MMseqs2 cluster output with protein metadata.
+ * Input:  mmseqs_results_cluster.tsv (seed, member), processed_input.parquet
+ * Output: clusters.parquet — cluster assignments enriched with species/tax metadata
+ */
 process PARSE_CLUSTERS {
 
   tag "parse_clusters"

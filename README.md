@@ -14,13 +14,14 @@ ECHO is a Nextflow (DSL2) pipeline that:
 
 ## Repository layout
 
-- `main.nf` – pipeline entrypoint  
-- `workflows/echo.nf` – main ECHO workflow DAG  
-- `modules/` – individual DSL2 process modules  
-- `bin/` – Python + shell wrappers executed by processes  
-- `test/` – test dataset + example params  
-- `nextflow.config` – profiles + resource configuration  
-- `params.yaml` – typical run parameters  
+- `main.nf` – pipeline entrypoint
+- `workflows/echo.nf` – main ECHO workflow DAG
+- `modules/` – individual DSL2 process modules
+- `bin/` – Python + shell wrappers executed by processes
+- `test/` – test dataset + example params
+- `nextflow.config` – profiles + resource configuration
+- `nextflow_schema.json` – parameter schema (see [Parameter schema](#parameter-schema) below)
+- `params.yaml` – typical run parameters
 
 ---
 
@@ -50,27 +51,34 @@ Make sure your Slurm job environment loads the same Python/venv (or module) cons
 ### 3) MMseqs2 container (Singularity)
 The pipeline runs MMseqs2 via Singularity. You must have:
 
-singularity available on compute nodes
-
-a valid MMseqs image path in params (e.g. params.singularity_image.sif)
+- Singularity available on compute nodes
+- A valid MMseqs2 image path set via `params.mmseqs_singularity_image`
 
 ### Inputs
-FASTA directory (params.input_fasta_dir)
-A directory containing per-species protein FASTA files (*.fa), e.g.
-Note: The headers of the fasta file must contain protein ids only. 
 
+#### FASTA directory (optional: `params.input_fasta_dir`)
+An optional base directory used to resolve relative `file_path` entries in the metadata TSV.
+If all `file_path` values in the metadata TSV are absolute, this parameter can be omitted.
+
+#### Metadata TSV (`params.metadata_tsv`)
+4-column TSV with a header row:
+
+| Column | Description |
+|--------|-------------|
+| `sps_name` | Normalised species name (e.g. `homo_sapiens`) |
+| `taxon_id` | NCBI taxon ID |
+| `gca` | Genome assembly accession, or `NA` |
+| `file_path` | Path to the per-species protein FASTA — absolute, or a filename/relative path resolved against `input_fasta_dir` |
+
+Example:
 ```
-input_fastas/
-  species1.prots.fa
-  species2.prots.fa
-  ...
+sps_name	taxon_id	gca	file_path
+homo_sapiens	9606	GCA_000001405.29	homo_sapiens.fa
+mus_musculus	10090	NA	/absolute/path/mus_musculus.fa
 ```
 
-#### Metadata TSV (params.metadata_tsv)
-TSV header: Scientific name  Species taxon_id
-
-#### Query species TSV (params.query_species)
-TSV header: tax_id  sps_name
+#### Query species TSV (`params.query_species`)
+TSV with columns: `tax_id`, `sps_name`
 
 Example:
 ```
@@ -78,62 +86,84 @@ tax_id  sps_name
 78070   Platismatia glauca
 ...
 ```
+
 ### Configuration
 
-Parameters (params.yaml)
-You typically set:
-- input_fasta_dir
-- metadata_tsv
-- query_species
-- outdir
-- num_of_rel
-- chunk_size
-- singularity_image
-- MMseqs settings: min_seq_id, coverage, cov_mode, threads
-- optional: with_singletons
-- optional: existing_clusters_dir
-- optional: workdir
+#### Parameters (`params.yaml`)
 
-Example snippet:
+**Required:**
+- `metadata_tsv` – path to the metadata TSV
+- `query_species` – path to the query species TSV
+- `outdir` – output directory
+- `mmseqs_singularity_image` – path to the MMseqs2 `.sif` image
 
-```
+**Clustering (MMseqs2):**
+- `min_seq_id` – minimum sequence identity (default: `0.75`)
+- `coverage` – minimum alignment coverage (default: `0.8`)
+- `cov_mode` – coverage mode: `0`=bidirectional, `1`=target, `2`=query, `3`=target+query (default: `0`)
+- `mmseqs_threads` – CPU threads for MMseqs2 (default: `32`)
+
+**Relatives:**
+- `num_of_rel` – number of closest relatives per query species (default: `5`)
+- `clusters_per_chunk` – clusters per parallel chunk (default: `10000`)
+- `with_singletons` – include singleton clusters in `_all_relatives.fa` output (default: `false`)
+
+**FASTA output:**
+- `fasta_line_width` – characters per sequence line in `combined_input_fasta.fa` (default: `60`). Standard FASTA is 60 or 80; adjust if downstream tools require a specific wrap length.
+
+**Taxonomy:**
+- `ncbi_taxa_db` – path to a pre-built NCBITaxa sqlite database. If omitted, ete3 uses its default (`~/.etetoolkit/taxa.sqlite`), downloading it on first use if absent. On a shared cluster, point this to a central copy to avoid repeated downloads and `~` filesystem pressure.
+
+**Optional / advanced:**
+- `input_fasta_dir` – base directory for resolving relative `file_path` entries in the metadata TSV
+- `existing_clusters_dir` – path to a previous ECHO output directory; when set, steps 1–4 (FASTA parsing, MMseqs2, cluster filtering) are skipped and their outputs are read from this directory
+- `workdir` – custom Nextflow work directory (default: `work` in the run location)
+
+Example `params.yaml`:
+
+```yaml
 outdir: "results"
-input_fasta_dir: "/path/to/input_fastas"
 metadata_tsv: "/path/to/metadata.tsv"
 query_species: "/path/to/query_species.tsv"
+input_fasta_dir: "/path/to/input_fastas"   # optional if file_path in TSV is absolute
 
 num_of_rel: 5
-chunk_size: 2500
+clusters_per_chunk: 10000
 
-singularity_image: "/path/to/mmseqs2_latest.sif"
+mmseqs_singularity_image: "/path/to/mmseqs2_latest.sif"
 min_seq_id: 0.75
 coverage: 0.8
 cov_mode: 1
-threads: 16
+mmseqs_threads: 16
 
 with_singletons: false
-existing_clusters_dir: "/path/to/existing/clusters/dir"
-workdir: "/path/to/work/dir/if/required"
+fasta_line_width: 60
+
+# Point to a shared NCBITaxa DB to avoid ete3 re-downloading it
+ncbi_taxa_db: "/shared/path/taxa.sqlite"
+
+# existing_clusters_dir: "/path/to/previous/outdir"
+# workdir: "/path/to/work/dir"
 ```
 
-#### Note:
-
-- existing_clusters_dir: Path to a directory containing outputs from a previous ECHO run (e.g. processed_input.parquet, clusters.parquet, remaining_clusters.parquet, etc.)..
-- workdir: By default, Nextflow creates the work directory in the location where the pipeline is executed. 
-  You can optionally set workDir in nextflow.config to specify a custom location for the work directory
-
+---
 
 ### Running
 
-```
+```bash
 nextflow run main.nf -profile slurm -params-file params.yaml -with-report
 ```
+
+#### Note on run-time reporting
+The `-with-report` flag produces a Nextflow HTML report (e.g. `report.html`) in the run directory.
+Open it in a browser to see per-process CPU, memory, and **wall-clock time** for each task.
+This is the easiest way to check total run time and identify bottlenecks without parsing logs manually.
 
 ### Slurm (recommended)
 Submit using a batch script like:
 
-run_nf.sh
-```
+`run_nf.sh`
+```bash
 #!/bin/bash
 #SBATCH --cpus-per-task=16
 #SBATCH --output=logs/vgp_set_nf.out
@@ -152,37 +182,49 @@ time nextflow run main.nf \
   -params-file params.yaml \
   -with-report \
   -resume
-
-time
 ```
 
 Submit:
 
-```
+```bash
 mkdir -p logs
 sbatch run_nf.sh
 ```
 
-### Outputs (in params.outdir)
+---
+
+### Parameter schema
+
+`nextflow_schema.json` is a JSON Schema file that documents every pipeline parameter with its type, default, and description.
+It can be used in several ways:
+
+- **Validation** – Nextflow natively validates your `params.yaml` against the schema at startup and reports missing required parameters or type mismatches before any jobs run.
+- **IDE auto-complete** – editors such as VS Code (with the nf-core schema extension) use it to provide parameter hints when editing `params.yaml`.
+- **Documentation** – tools like `nf-core schema docs` can render the schema as a human-readable parameter table.
+
+The schema is kept in sync with `nextflow.config`; if you add a new parameter, update both files.
+
+---
+
+### Outputs (in `params.outdir`)
 Common key outputs:
 
-- combined_input_fasta.fa
-- processed_input.tsv, processed_input.parquet
-- mmseqs_results_cluster.tsv
-- clusters.parquet
-- remaining_clusters.parquet
-- discarded_singletons.fa
-- clusters_with_fewer_tax_ids.fa
-- ranked_taxa.tsv
-- closest_relatives_log.tsv
+- `combined_input_fasta.fa`
+- `processed_input.tsv`, `processed_input.parquet`
+- `mmseqs_results_cluster.tsv`
+- `clusters.parquet`
+- `remaining_clusters.parquet`
+- `discarded_singletons.fa`
+- `clusters_with_fewer_tax_ids.fa`
+- `ranked_taxa.tsv`
+- `closest_relatives_log.tsv`
 - Per-query FASTA:
-  <query_name>_relatives.fa
-  <query_name>_all_relatives.fa (adds common clusters-with-fewer-taxids and optionally singletons)
+  - `<query_name>_all_relatives.fa` (adds common clusters-with-fewer-taxids and optionally singletons)
 - Diagnostics:
-  diagnostics_out/diagnostics.pdf
-  diagnostics_out/*.png
+  - `diagnostics_out/diagnostics.pdf`
+  - `diagnostics_out/*.png`
 - Nextflow report:
-  report.html (written where you run Nextflow unless configured otherwise)
+  - `report.html` (written where you run Nextflow unless configured otherwise)
 
 #### Notes on reproducibility
 Nextflow DAG + scripts are fully version-controlled.
@@ -191,32 +233,31 @@ The main reproducibility dependency is the Python environment and the MMseqs con
 
 For consistent runs, use:
 
-- pinned requirements.txt
-- fixed MMseqs .sif path/version
+- pinned `requirements.txt`
+- fixed MMseqs `.sif` path/version
 - fixed Nextflow version (optional but recommended)
 
 #### Test run
-A small test dataset is included under test/.
+A small test dataset is included under `test/`.
 Example:
 
-```
+```bash
 nextflow run main.nf -profile slurm -params-file test/params.test.yaml
 ```
 
-Troubleshooting
+### Troubleshooting
 If a process fails, inspect:
-.nextflow.log
+- `.nextflow.log`
+- the process work directory printed by Nextflow
 
-the process work directory printed by Nextflow
-
-run the command manually:
-```
+Run the command manually:
+```bash
 cd <work/xx/xxxx>
 bash .command.run
 ```
+
 If outputs look stale, rerun without cache:
 
-```
+```bash
 nextflow run main.nf -profile slurm -params-file params.yaml -resume
 ```
-

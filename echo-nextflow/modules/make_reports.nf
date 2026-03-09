@@ -1,3 +1,8 @@
+/* Step 10a: Generate human-readable summary reports.
+ * Input:  clusters_parquet, remaining_clusters, few_taxids_summary, singletons_fa,
+ *         fewer_tax_fa, all_relatives_fastas, input_fasta
+ * Output: cluster_summary.txt, echo_pipeline_summary.txt
+ */
 process MAKE_REPORTS {
   tag "make_reports"
   publishDir params.outdir, mode: 'copy'
