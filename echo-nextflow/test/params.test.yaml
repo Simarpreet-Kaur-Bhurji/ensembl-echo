@@ -1,7 +1,7 @@
-input_fasta_dir: "test/data/input_fastas"
-metadata_tsv: "test/data/test_metadata.tsv"
-outdir: "nextflow_results"
-query_species: "test/data/test_query.tsv"
+input_fasta_dir: "/hps/software/users/ensembl/compara/sbhurji/ensembl-echo/echo-nextflow/test/data/input_fastas"
+metadata_tsv: "/hps/software/users/ensembl/compara/sbhurji/ensembl-echo/echo-nextflow/test/data/test_metadata.tsv"
+outdir: "nextflow_test"
+query_species: "/hps/software/users/ensembl/compara/sbhurji/ensembl-echo/echo-nextflow/test/data/test_query.tsv"
 
 num_of_rel: 5
 clusters_per_chunk: 50
@@ -12,3 +12,9 @@ mmseqs_threads: 16
 mmseqs_singularity_image: "/hps/software/users/ensembl/compara/sbhurji/ensembl-echo/echo-nextflow/mmseqs2_latest.sif"
 
 with_singletons: false
+
+# Path to your local NCBITaxa sqlite (avoids ete3 re-downloading on first use)
+ncbi_taxa_db: "/homes/sbhurji/.etetoolkit/taxa.sqlite"
+
+# Characters per line in combined_input_fasta.fa (60 = standard FASTA)
+fasta_line_width: 60

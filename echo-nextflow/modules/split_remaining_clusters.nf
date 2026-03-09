@@ -1,3 +1,8 @@
+/* Step 6: Partition remaining_clusters.parquet into fixed-size chunk files.
+ * Input:  remaining_clusters.parquet
+ * Output: cluster_chunks/chunk_*.parquet (params.clusters_per_chunk clusters each)
+ * Chunking enables embarrassingly parallel closest-relative searches.
+ */
 process SPLIT_REMAINING_CLUSTERS {
   tag "split_clusters"
 

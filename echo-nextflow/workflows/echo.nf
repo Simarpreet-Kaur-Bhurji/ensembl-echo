@@ -16,10 +16,11 @@ include { MAKE_DIAGNOSTICS }         from '../modules/make_diagnostics.nf'
 
 workflow ECHO {
 
+  main:
   /*
    * Decide whether to reuse existing clustering
    */
-  boolean use_existing = params.existing_clusters_dir != null
+  def use_existing = params.existing_clusters_dir != null
   
   /*
    * Define inputs depending on mode
@@ -37,14 +38,14 @@ workflow ECHO {
     assert file("${base}/singleton_cluster_summary.tsv").exists()
     assert file("${base}/combined_input_fasta.fa").exists()
 
-    processed_parquet     = Channel.value(file("${base}/processed_input.parquet"))
-    clusters_parquet      = Channel.value(file("${base}/clusters.parquet"))
-    remaining_clusters    = Channel.value(file("${base}/remaining_clusters.parquet"))
-    fewer_tax_fa          = Channel.value(file("${base}/clusters_with_fewer_tax_ids.fa"))
-    few_taxids_summary    = Channel.value(file("${base}/clusters_with_fewer_taxids_summary.tsv"))
-    singletons_fa         = Channel.value(file("${base}/discarded_singletons.fa"))
-    singletons_summary    = Channel.value(file("${base}/singleton_cluster_summary.tsv"))
-    combined_fasta        = Channel.value(file("${base}/combined_input_fasta.fa"))
+    processed_parquet     = channel.value(file("${base}/processed_input.parquet"))
+    clusters_parquet      = channel.value(file("${base}/clusters.parquet"))
+    remaining_clusters    = channel.value(file("${base}/remaining_clusters.parquet"))
+    fewer_tax_fa          = channel.value(file("${base}/clusters_with_fewer_tax_ids.fa"))
+    few_taxids_summary    = channel.value(file("${base}/clusters_with_fewer_taxids_summary.tsv"))
+    singletons_fa         = channel.value(file("${base}/discarded_singletons.fa"))
+    singletons_summary    = channel.value(file("${base}/singleton_cluster_summary.tsv"))
+    combined_fasta        = channel.value(file("${base}/combined_input_fasta.fa"))
 
   } else {
 
@@ -52,7 +53,6 @@ workflow ECHO {
      * Full pipeline from scratch
      */
     parsed = PARSE_INPUT_FASTA(
-      file(params.input_fasta_dir),
       file(params.metadata_tsv)
     )
 
@@ -92,11 +92,11 @@ workflow ECHO {
   /*
    * Load queries
    */
-  queries = Channel
+  queries = channel
     .fromPath(params.query_species)
     .splitCsv(sep: '\t', header: true)
     .map { row -> tuple(row.tax_id.toString(), row.sps_name.toString()) }
-    .distinct { it[0] }
+    .distinct { item -> item[0] }
 
   /*
    * Cartesian product: (chunk × query × ranked_taxa)
@@ -130,8 +130,8 @@ workflow ECHO {
 
   merged_fastas = fastas_grouped
     .combine(queries)
-    .filter { tid1, fas, tid2, name -> tid1 == tid2 }
-    .map { tid, fas, _, name ->
+    .filter { tid1, _fas, tid2, _name -> tid1 == tid2 }
+    .map { tid, fas, _unused, name ->
       tuple(tid, name.toLowerCase().replaceAll(' ', '_'), fas)
     }
     | MERGE_FASTAS_PER_QUERY

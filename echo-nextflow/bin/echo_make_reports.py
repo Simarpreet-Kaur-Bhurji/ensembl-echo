@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# See the NOTICE file distributed with this work for additional information
+# regarding copyright ownership.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import argparse
 import os
 import pandas as pd
@@ -6,7 +21,7 @@ import pandas as pd
 
 def count_fasta_headers(path: str) -> int:
     n = 0
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             if line.startswith(">"):
                 n += 1
@@ -15,7 +30,7 @@ def count_fasta_headers(path: str) -> int:
 
 def count_tsv_rows(tsv_path: str) -> int:
     """Count data rows (excluding header) in a TSV."""
-    with open(tsv_path) as fh:
+    with open(tsv_path, encoding="utf-8") as fh:
         # skip header
         next(fh, None)
         return sum(1 for _ in fh)
@@ -47,19 +62,29 @@ def main():
     cluster_sizes = df.groupby("Cluster_ID").size()
     singleton_clusters = int((cluster_sizes == 1).sum())
 
-    fewer_taxid_clusters = int(count_tsv_rows(args.clusters_with_fewer_taxids_summary_tsv))
+    fewer_taxid_clusters = int(
+        count_tsv_rows(args.clusters_with_fewer_taxids_summary_tsv)
+    )
 
     # Load remaining clusters to get actual closest relatives clusters
     rdf = pd.read_parquet(args.remaining_clusters_parquet)
     closest_rel_clusters = int(rdf["Cluster_ID"].nunique())
 
-    with open(args.out_cluster_summary, "w") as f:
+    with open(args.out_cluster_summary, "w", encoding="utf-8") as f:
         f.write("Cluster Summary Report\n")
         f.write("======================\n\n")
-        f.write(f"Total number of clusters obtained from input fasta: {total_clusters}\n")
-        f.write(f"Singleton clusters (clusters with only one protein): {singleton_clusters}\n")
-        f.write(f"Number of clusters with fewer than the required tax IDs: {fewer_taxid_clusters}\n")
-        f.write(f"Closest relatives clusters (clusters with required tax IDs or more): {closest_rel_clusters}\n")
+        f.write(
+            f"Total number of clusters obtained from input fasta: {total_clusters}\n"
+        )
+        f.write(
+            f"Singleton clusters (clusters with only one protein): {singleton_clusters}\n"
+        )
+        f.write(
+            f"Number of clusters with fewer than the required tax IDs: {fewer_taxid_clusters}\n"
+        )
+        f.write(
+            f"Closest relatives clusters (clusters with required tax IDs or more): {closest_rel_clusters}\n"
+        )
 
     # -------------------------
     # ECHO pipeline summary
@@ -78,21 +103,27 @@ def main():
         q = base.replace("_all_relatives.fa", "")
         retained_counts[q] = count_fasta_headers(fa)
 
-    with open(args.out_pipeline_summary, "w") as f:
+    with open(args.out_pipeline_summary, "w", encoding="utf-8") as f:
         f.write("ECHO Pipeline Summary\n")
         f.write("====================\n\n")
         f.write(f"Total sequences in input FASTA: {total_input_seqs}\n\n")
         f.write("Common files for all queries:\n")
         f.write(f"  Discarded singletons: {singletons_seq_count} sequences\n")
-        f.write(f"  Clusters with fewer tax IDs: {fewer_taxids_seq_count} sequences\n\n")
+        f.write(
+            f"  Clusters with fewer tax IDs: {fewer_taxids_seq_count} sequences\n\n"
+        )
         f.write("Sequences retained per query:\n")
         for q in sorted(retained_counts.keys()):
             count = retained_counts[q]
             pct_ret = (count / total_input_seqs) * 100 if total_input_seqs else 0.0
             pct_dis = 100.0 - pct_ret
-            f.write(f"  {q} : {count} sequences ({pct_ret:.2f}% retained, {pct_dis:.2f}% discarded)\n")
-        f.write("\nNote: Each query_all_relatives.fa file includes sequences from clusters_with_fewer_tax_ids.fa.\n")
+            f.write(
+                f"  {q} : {count} sequences ({pct_ret:.2f}% retained, {pct_dis:.2f}% discarded)\n"
+            )
+        f.write(
+        "\nNote: Each query_all_relatives.fa file includes sequences from clusters_with_fewer_tax_ids.fa.\n"
+        )
+
 
 if __name__ == "__main__":
     main()
-

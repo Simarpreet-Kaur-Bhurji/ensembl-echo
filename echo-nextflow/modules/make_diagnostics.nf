@@ -1,3 +1,10 @@
+/* Step 10b: Generate QC diagnostics PDF and summary.
+ * Input:  clusters_parquet, singleton_summary_tsv, remaining_clusters,
+ *         few_taxids_summary_tsv, closest_log_tsv, input_fasta,
+ *         cluster_summary_txt, pipeline_summary_txt
+ * Output: diagnostics_out/ directory, diagnostics.pdf, diagnostics_summary.txt
+ */
+
 process MAKE_DIAGNOSTICS {
   tag "diagnostics"
   publishDir params.outdir, mode: 'copy'

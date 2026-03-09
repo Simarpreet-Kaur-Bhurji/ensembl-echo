@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# See the NOTICE file distributed with this work for additional information
+# regarding copyright ownership.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import argparse
 import duckdb
 import pandas as pd
@@ -8,7 +23,7 @@ def write_fasta(df: pd.DataFrame, fasta_path: str) -> None:
     """
     df: rows to write (already selected). Writes in current order.
     """
-    with open(fasta_path, "w") as fh:
+    with open(fasta_path, "w", encoding="utf-8") as fh:
         for _, row in df.iterrows():
             header = row["header"]
             seq = row["sequence"]
@@ -37,14 +52,15 @@ def main():
 
     # Load inputs
     con.execute(
-        f"CREATE OR REPLACE TABLE remaining_clusters AS SELECT * FROM read_parquet('{args.chunk_parquet}')"
+    f"CREATE OR REPLACE TABLE remaining_clusters AS SELECT * FROM read_parquet('{args.chunk_parquet}')"
     )
     con.execute(
-        f"CREATE OR REPLACE TABLE ranked_taxa AS SELECT * FROM read_csv_auto('{args.ranked_taxa_tsv}', sep='\\t')"
+    f"CREATE OR REPLACE TABLE ranked_taxa AS SELECT * FROM read_csv_auto('{args.ranked_taxa_tsv}', sep='\\t')"
     )
 
     # Efficient: single query returns ALL selected proteins for ALL clusters in this chunk for this query
-    selected = con.execute(f"""
+    selected = con.execute(
+        f"""
       WITH joined AS (
         SELECT
           c.Cluster_ID,
@@ -93,11 +109,13 @@ def main():
       FROM topn
       WHERE rn_cluster <= {nrel}
       ORDER BY Cluster_ID, distance ASC, seq_len DESC
-    """).fetchdf()
+    """
+    ).fetchdf()
 
     # always create outputs (even if empty)
     if selected.empty:
-        open(args.out_fasta, "w").close()
+        with open(args.out_fasta, "w", encoding="utf-8") as _fh:
+            pass
         pd.DataFrame([]).to_csv(args.out_log, sep="\t", index=False)
         return
 
@@ -105,13 +123,15 @@ def main():
     write_fasta(selected, args.out_fasta)
 
     # Stats per cluster (same chunk)
-    stats = con.execute("""
+    stats = con.execute(
+        """
       SELECT Cluster_ID,
              COUNT(*) AS num_proteins,
              COUNT(DISTINCT CAST(tax_id AS INT)) AS num_unique_tax_ids
       FROM remaining_clusters
       GROUP BY Cluster_ID
-    """).fetchdf()
+    """
+    ).fetchdf()
 
     # Build one log row per Cluster_ID like your original code
     log_rows = []
@@ -135,4 +155,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

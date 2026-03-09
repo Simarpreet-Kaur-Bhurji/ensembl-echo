@@ -1,3 +1,17 @@
+# See the NOTICE file distributed with this work for additional information
+# regarding copyright ownership.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 closest_taxonomic_relatives_module.py
 
@@ -10,10 +24,9 @@ Improvements:
 - Keeps Pandas for convenient deduplication and sorting.
 """
 
+import contextlib
 import os
 import pandas as pd
-import duckdb
-import pickle
 
 
 # -----------------------------
@@ -92,48 +105,47 @@ def get_closest_rel_within_cluster(
     """
     ).fetchdf()
 
-    # Open one fasta file per query
-    fasta_files = {}
-    for query_name in query_species.values():
-        query_file_name = query_name.lower().replace(" ", "_")
-        file_name = f"{query_file_name}_relatives.fa"
-        file_path = os.path.join(output_dir, file_name)
-        fasta_files[query_name] = open(file_path, "w")
-
     log_data = []
 
-    # Cluster-first loop
-    for _, row in grouped.iterrows():
-        cluster_id = row["Cluster_ID"]
-        protein_headers = row["proteins"].tolist()
-        unique_cluster_tax_ids = row["unique_tax_ids"].tolist()
-
-        for query_tax_id, query_name in query_species.items():
-            closest_df = break_taxonomic_ties(
-                con, cluster_id, query_tax_id, number_of_relatives
+    # Open one fasta file per query using ExitStack so all are properly closed
+    with contextlib.ExitStack() as stack:
+        fasta_files = {}
+        for query_name in query_species.values():
+            query_file_name = query_name.lower().replace(" ", "_")
+            file_name = f"{query_file_name}_relatives.fa"
+            file_path = os.path.join(output_dir, file_name)
+            fasta_files[query_name] = stack.enter_context(
+                open(file_path, "w", encoding="utf-8")
             )
 
-            # Write sequences to correct FASTA
-            if not closest_df.empty:
-                write_closest_sequences(closest_df, fasta_files[query_name])
+        # Cluster-first loop
+        for _, row in grouped.iterrows():
+            cluster_id = row["Cluster_ID"]
+            protein_headers = row["proteins"].tolist()
+            unique_cluster_tax_ids = row["unique_tax_ids"].tolist()
 
-                # Append log info
-                log_data.append(
-                    {
-                        "cluster_id": cluster_id,
-                        "query_species_name": query_name,
-                        "query_taxonomy_id": query_tax_id,
-                        "closest_relatives": closest_df["tax_id"].tolist(),
-                        "closest_proteins": closest_df["header"].tolist(),
-                        "closest_distances": closest_df["distance"].tolist(),
-                        "num_proteins": len(protein_headers),
-                        "num_unique_tax_ids": len(unique_cluster_tax_ids),
-                    }
+            for query_tax_id, query_name in query_species.items():
+                closest_df = break_taxonomic_ties(
+                    con, cluster_id, query_tax_id, number_of_relatives
                 )
 
-    # Close fasta files
-    for f in fasta_files.values():
-        f.close()
+                # Write sequences to correct FASTA
+                if not closest_df.empty:
+                    write_closest_sequences(closest_df, fasta_files[query_name])
+
+                    # Append log info
+                    log_data.append(
+                        {
+                            "cluster_id": cluster_id,
+                            "query_species_name": query_name,
+                            "query_taxonomy_id": query_tax_id,
+                            "closest_relatives": closest_df["tax_id"].tolist(),
+                            "closest_proteins": closest_df["header"].tolist(),
+                            "closest_distances": closest_df["distance"].tolist(),
+                            "num_proteins": len(protein_headers),
+                            "num_unique_tax_ids": len(unique_cluster_tax_ids),
+                        }
+                    )
 
     # Write log file
     pd.DataFrame(log_data).to_csv(

@@ -1,3 +1,8 @@
+/* Step 2: cluster all input proteins with MMseqs2 easy-cluster via Singularity.
+ * Input:  combined_input_fasta.fa  (from PARSE_INPUT_FASTA)
+ * Output: mmseqs_results_cluster.tsv — two-column (seed, member) TSV
+ * cpus is set from params.mmseqs_threads so Singularity uses all allocated cores.
+ */
 process RUN_MMSEQS {
 
   tag "mmseqs"
