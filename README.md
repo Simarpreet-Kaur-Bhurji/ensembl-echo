@@ -122,8 +122,8 @@ Each query species produces its own `*_all_relatives.fa` and `*_manifest.tsv` in
 - `clusters_per_chunk` – clusters per parallel chunk (default: `10000`)
 
 **Singleton policy (`with_singletons`):**
-- `with_singletons: true` — singleton clusters (clusters containing only one protein) are appended to each query's `_all_relatives.fa` and appear in `*_manifest.tsv` with `selection_source=singleton`. A `singleton_manifest.tsv` is published summarising all singletons.
-- `with_singletons: false` *(default)* — singletons are excluded from all per-query outputs. They are written to `discarded_singletons.fa` and summarised in `singleton_cluster_summary.tsv` for reference.
+- `with_singletons: true` *(default)* — singletons are included as low-support but retained coverage evidence. They are appended to each query's `_all_relatives.fa` and appear in `*_manifest.tsv` with `selection_source=singleton`.
+- `with_singletons: false` — singletons are excluded from all per-query outputs. They are written to `discarded_singletons.fa` and summarised in `singleton_cluster_summary.tsv` for reference.
 
 **Sequence deduplication (`dedup_sequences`):**
 - `dedup_sequences: false` *(default)* — no sequence-level deduplication. Duplicate headers are always removed (first occurrence kept).
@@ -157,7 +157,7 @@ coverage: 0.8
 cov_mode: 1
 mmseqs_threads: 16
 
-with_singletons: false
+with_singletons: true
 dedup_sequences: false
 fasta_line_width: 60
 
@@ -238,7 +238,7 @@ query_species: "/path/to/new_query.tsv"
 
 num_of_rel: 5
 clusters_per_chunk: 10000
-with_singletons: false
+with_singletons: true
 dedup_sequences: false
 ncbi_taxa_db: "/shared/path/taxa.sqlite"
 fasta_line_width: 60
