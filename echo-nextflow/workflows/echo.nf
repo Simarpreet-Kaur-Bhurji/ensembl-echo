@@ -7,9 +7,9 @@ include { PROCESS_CLUSTERS }         from '../modules/process_clusters.nf'
 
 include { RANK_TAXA }                from '../modules/rank_taxa.nf'
 include { SPLIT_REMAINING_CLUSTERS } from '../modules/split_remaining_clusters.nf'
-include { CLOSEST_RELATIVES_CHUNK }  from '../modules/closest_relatives_chunk.nf'
-include { MERGE_ALL_LOGS }           from '../modules/merge_all_logs.nf'
-include { MERGE_FASTAS_PER_QUERY }   from '../modules/merge_fastas_per_query.nf'
+include { CLOSEST_RELATIVES_CHUNK }    from '../modules/closest_relatives_chunk.nf'
+include { MERGE_FASTAS_PER_QUERY }     from '../modules/merge_fastas_per_query.nf'
+include { MERGE_MANIFESTS_PER_QUERY }  from '../modules/merge_manifests_per_query.nf'  // new: per-query manifest merge; replaces MERGE_ALL_LOGS
 include { MAKE_ALL_RELATIVES }       from '../modules/make_all_relatives.nf'
 include { MAKE_REPORTS }             from '../modules/make_reports.nf'
 include { MAKE_DIAGNOSTICS }         from '../modules/make_diagnostics.nf'
@@ -28,24 +28,37 @@ workflow ECHO {
   if (use_existing) {
 
     def base = params.existing_clusters_dir
-    // Fail fast if required files are missing
+
+    // Hard prerequisites — cannot be derived from anything else; fail fast if missing
     assert file("${base}/processed_input.parquet").exists()
     assert file("${base}/clusters.parquet").exists()
     assert file("${base}/remaining_clusters.parquet").exists()
-    assert file("${base}/clusters_with_fewer_tax_ids.fa").exists()
-    assert file("${base}/clusters_with_fewer_taxids_summary.tsv").exists()
-    assert file("${base}/discarded_singletons.fa").exists()
-    assert file("${base}/singleton_cluster_summary.tsv").exists()
     assert file("${base}/combined_input_fasta.fa").exists()
 
-    processed_parquet     = channel.value(file("${base}/processed_input.parquet"))
-    clusters_parquet      = channel.value(file("${base}/clusters.parquet"))
-    remaining_clusters    = channel.value(file("${base}/remaining_clusters.parquet"))
-    fewer_tax_fa          = channel.value(file("${base}/clusters_with_fewer_tax_ids.fa"))
-    few_taxids_summary    = channel.value(file("${base}/clusters_with_fewer_taxids_summary.tsv"))
-    singletons_fa         = channel.value(file("${base}/discarded_singletons.fa"))
-    singletons_summary    = channel.value(file("${base}/singleton_cluster_summary.tsv"))
-    combined_fasta        = channel.value(file("${base}/combined_input_fasta.fa"))
+    processed_parquet  = channel.value(file("${base}/processed_input.parquet"))
+    clusters_parquet   = channel.value(file("${base}/clusters.parquet"))
+    remaining_clusters = channel.value(file("${base}/remaining_clusters.parquet"))
+    combined_fasta     = channel.value(file("${base}/combined_input_fasta.fa"))
+
+    // Singleton files are derived outputs of clusters.parquet — fast to regenerate
+    // (DuckDB + pandas, no MMseqs2). May be absent if the previous run used
+    // with_singletons=false or output was partially cleaned up.
+    def singletons_fa_file  = file("${base}/discarded_singletons.fa")
+    def singletons_tsv_file = file("${base}/singleton_cluster_summary.tsv")
+
+    if (singletons_fa_file.exists() && singletons_tsv_file.exists()) {
+      singletons_fa       = channel.value(singletons_fa_file)
+      singletons_summary  = channel.value(singletons_tsv_file)
+      singletons_manifest = channel.empty()
+    } else {
+      // Regenerate from clusters.parquet — PROCESS_CLUSTERS also emits
+      // remaining_clusters but we use the one from base dir above
+      log.info "[ECHO] Singleton files missing from ${base} — regenerating from clusters.parquet"
+      def regen           = PROCESS_CLUSTERS(clusters_parquet)
+      singletons_fa       = regen.singletons_fa
+      singletons_summary  = regen.singletons_summary
+      singletons_manifest = regen.singletons_manifest
+    }
 
   } else {
 
@@ -68,10 +81,9 @@ workflow ECHO {
     processed_parquet     = parsed.processed_parquet
     clusters_parquet      = cl.clusters_parquet
     remaining_clusters    = filtered.remaining_clusters
-    fewer_tax_fa          = filtered.fewer_tax_fa
-    few_taxids_summary    = filtered.few_taxids_summary
     singletons_fa         = filtered.singletons_fa
     singletons_summary    = filtered.singletons_summary
+    singletons_manifest   = filtered.singletons_manifest
     combined_fasta        = parsed.combined_fasta
   }
 
@@ -114,11 +126,6 @@ workflow ECHO {
   partial = CLOSEST_RELATIVES_CHUNK(closest_inputs)
 
   /*
-   * Merge logs
-   */
-  merged_logs = MERGE_ALL_LOGS(partial.partial_logs.collect())
-
-  /*
    * Merge FASTAs per query
    */
   fastas_grouped = partial.partial_fastas
@@ -137,6 +144,27 @@ workflow ECHO {
     | MERGE_FASTAS_PER_QUERY
 
   /*
+   * Merge manifest TSVs per query; mirrors the FASTA merge above.
+   * Each {query_name}_manifest.tsv is the provenance handoff file for Genebuild,
+   * published alongside the FASTA.
+   */
+  manifests_grouped = partial.partial_manifests
+    .map { tsv ->
+      def tid = tsv.baseName.tokenize('_')[0]
+      tuple(tid, tsv)
+    }
+    .groupTuple()
+
+  merged_manifests = manifests_grouped
+    .combine(queries)
+    .filter { tid1, _tsvs, tid2, _name -> tid1 == tid2 }
+    .map { tid, tsvs, _unused, name ->
+      tuple(tid, name.toLowerCase().replaceAll(' ', '_'), tsvs)
+    }
+    .combine(singletons_manifest.ifEmpty([file("NO_SINGLETON_MANIFEST")]))
+    | MERGE_MANIFESTS_PER_QUERY
+
+  /*
    * Build *_all_relatives.fa
    */
   all_inputs = merged_fastas.relatives_fa
@@ -144,10 +172,9 @@ workflow ECHO {
       def qname = fa.baseName.replaceFirst(/_relatives$/, '')
       tuple(qname, fa)
     }
-    .combine(fewer_tax_fa)
     .combine(singletons_fa)
     .map { it ->
-      tuple(it[0], it[1], it[2], it[3])
+      tuple(it[0], it[1], it[2])
     }
 
   all_rel = MAKE_ALL_RELATIVES(all_inputs)
@@ -159,19 +186,15 @@ workflow ECHO {
   reports = MAKE_REPORTS(
     clusters_parquet,
     remaining_clusters,
-    few_taxids_summary,
     singletons_fa,
-    fewer_tax_fa,
     all_rel.all_relatives_fa.collect(),
     combined_fasta
   )
 
   diagnostics = MAKE_DIAGNOSTICS(
     clusters_parquet,
-    singletons_summary,
     remaining_clusters,
-    few_taxids_summary,
-    merged_logs.merged_log,
+    merged_manifests.query_manifest.collect(),  // all per-query manifests collected; diagnostics reads distances from them directly instead of a separate combined log
     combined_fasta,
     reports.cluster_summary,
     reports.pipeline_summary
@@ -181,7 +204,7 @@ workflow ECHO {
     clusters_parquet          = clusters_parquet
     remaining_clusters        = remaining_clusters
     ranked_taxa_tsv           = ranked.ranked_taxa_tsv
-    closest_relatives_log     = merged_logs.merged_log
+    query_manifests           = merged_manifests.query_manifest  // per-query provenance TSVs; handoff contract for Genebuild
     relatives_fastas          = merged_fastas.relatives_fa
     all_relatives_fa          = all_rel.all_relatives_fa
     cluster_summary_txt       = reports.cluster_summary

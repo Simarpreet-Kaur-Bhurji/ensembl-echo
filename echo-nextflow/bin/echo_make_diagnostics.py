@@ -162,16 +162,15 @@ def plot_unique_taxids_distribution(unique_taxids: pd.Series, pdf_pages, png_pat
 def plot_retained_vs_discarded(
     _total_clusters: int,
     singleton_clusters: int,
-    few_taxid_clusters: int,
-    valid_clusters: int,
+    multi_member_clusters: int,
     pdf_pages,
     png_path,
 ):
     """
-    Simple 3-bar plot: singletons, fewer-taxid, valid clusters.
+    Simple 2-bar plot: singletons vs multi-member clusters entering relatives search.
     """
-    labels = ["Singleton clusters", "Fewer-taxid clusters", "Valid clusters"]
-    values = [singleton_clusters, few_taxid_clusters, valid_clusters]
+    labels = ["Singleton clusters", "Multi-member clusters"]
+    values = [singleton_clusters, multi_member_clusters]
 
     fig, ax = plt.subplots()
     ax.bar(labels, values)
@@ -187,19 +186,19 @@ def plot_retained_vs_discarded(
     savefig(fig, pdf_pages, png_path)
 
 
-def plot_taxonomic_distance_distribution(closest_log_tsv: str, pdf_pages, png_path):
+def plot_taxonomic_distance_distribution(manifest_df: pd.DataFrame, pdf_pages, png_path):
     """
-    Histogram of taxonomic distances from closest_relatives_log.tsv.
+    Histogram of taxonomic distances from the combined per-query manifest dataframe.
+    Only ranked_cluster rows carry a numeric distance; singleton rows have NA and are dropped.
     """
-    df = pd.read_csv(closest_log_tsv, sep="\t")
-    if "closest_distances" not in df.columns and "distance" not in df.columns:
-        # handle: either list-like column or pre-exploded distances
+    df = manifest_df.copy()
+    if "distance" not in df.columns:
         fig, ax = plt.subplots()
         ax.set_title("Taxonomic distance distribution")
         ax.text(
             0.5,
             0.5,
-            "No distance column found in closest log",
+            "No distance column found in manifests",
             ha="center",
             va="center",
             transform=ax.transAxes,
@@ -207,26 +206,7 @@ def plot_taxonomic_distance_distribution(closest_log_tsv: str, pdf_pages, png_pa
         savefig(fig, pdf_pages, png_path)
         return
 
-    # Your log stores lists in a column; try to parse that robustly
-    distances = []
-    if "distance" in df.columns:
-        distances = df["distance"].dropna().tolist()
-    else:
-        # closest_distances column likely contains python-like lists as strings
-        for v in df["closest_distances"].dropna().tolist():
-            if isinstance(v, list):
-                distances.extend(v)
-            else:
-                s = str(v).strip()
-                # try to parse like "[1, 2, 3]"
-                s = s.strip("[]")
-                if s:
-                    parts = [p.strip() for p in s.split(",")]
-                    for p in parts:
-                        try:
-                            distances.append(float(p))
-                        except ValueError:
-                            pass
+    distances = df["distance"].dropna().tolist()
 
     distances = [
         d
@@ -365,9 +345,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--clusters_parquet", required=True)
     ap.add_argument("--remaining_clusters_parquet", required=True)
-    ap.add_argument("--singleton_summary_tsv", required=True)
-    ap.add_argument("--few_taxids_summary_tsv", required=True)
-    ap.add_argument("--closest_log_tsv", required=True)
+    ap.add_argument("--manifest_tsvs", nargs="+", required=True)  # all per-query manifests; replaces single closest_log_tsv; concat'd to get all distances
     ap.add_argument("--input_fasta", required=True)
     ap.add_argument("--cluster_summary_txt")
     ap.add_argument("--pipeline_summary_txt")
@@ -385,17 +363,21 @@ def main():
     # unique tax ids per cluster
     unique_taxids = cdf.groupby("Cluster_ID")["tax_id"].nunique()
 
-    # Load remaining clusters to get actual valid clusters
+    # Load remaining clusters (all multi-member clusters eligible for relatives search)
     rdf = pd.read_parquet(args.remaining_clusters_parquet)
-    valid_clusters = int(rdf["Cluster_ID"].nunique())
+    multi_member_clusters = int(rdf["Cluster_ID"].nunique())
 
-    # cluster discard counts from summary TSVs (cluster counts)
-    singleton_clusters = read_tsv_rows(
-        args.singleton_summary_tsv
-    )  # number of singleton clusters
-    few_taxid_clusters = read_tsv_rows(
-        args.few_taxids_summary_tsv
-    )  # number of few-taxid clusters
+    # Load all per-query manifests once — reused for singleton count and distance plot
+    manifest_df = pd.concat(
+        [pd.read_csv(p, sep="\t", dtype=str) for p in args.manifest_tsvs],
+        ignore_index=True,
+    ) if args.manifest_tsvs else pd.DataFrame()
+
+    # singleton count: when with_singletons=true, count unique cluster_ids in the manifest
+    # that have selection_source="singleton" — this reflects what actually ended up in output.
+    # Each singleton appears once per query, so deduplicate by cluster_id.
+    # singleton count always derived from clusters.parquet — already loaded, always accurate
+    singleton_clusters = int((cluster_sizes == 1).sum())
 
     # seq counts
     total_input_seqs = count_fasta_headers(args.input_fasta)
@@ -422,16 +404,14 @@ Plot Descriptions:
 2. Unique Tax IDs Distribution: Displays how many unique taxonomic IDs are present in each cluster.
    Helps understand taxonomic diversity within clusters.
 
-3. Cluster Retention Summary: Bar chart showing total clusters, discarded clusters (singletons and few-taxid), 
-   and retained valid clusters.
+3. Cluster Retention Summary: Bar chart showing singleton clusters vs multi-member clusters
+   entering the relatives search.
 
 4. Taxonomic Distance Distribution: Histogram of taxonomic distances for closest relatives.
    Lower distances indicate closer taxonomic relationships.
 
 5. Size vs Tax ID Scatter: Scatter plot correlating cluster size with number of unique taxonomic IDs.
    Can reveal patterns between cluster size and taxonomic diversity.
-
-6. (If applicable) Additional plots for singletons or other metrics.
 """
             full_content = summary_content + plot_descriptions
             add_text_page(pdf_pages, "ECHO Pipeline Diagnostics Summary", full_content)
@@ -450,21 +430,20 @@ Plot Descriptions:
         plot_retained_vs_discarded(
             total_clusters,
             singleton_clusters,
-            few_taxid_clusters,
-            valid_clusters,
+            multi_member_clusters,
             pdf_pages,
             os.path.join(args.outdir, "plot3_cluster_retention_summary.png"),
         )
         plot_taxonomic_distance_distribution(
-            args.closest_log_tsv,
+            manifest_df,  # already-loaded combined manifest dataframe
             pdf_pages,
-            os.path.join(args.outdir, "plot5_taxonomic_distance_distribution.png"),
+            os.path.join(args.outdir, "plot4_taxonomic_distance_distribution.png"),
         )
         plot_size_vs_taxid_scatter(
             cluster_sizes,
             unique_taxids,
             pdf_pages,
-            os.path.join(args.outdir, "plot6_size_vs_taxid_scatter.png"),
+            os.path.join(args.outdir, "plot5_size_vs_taxid_scatter.png"),
         )
 
     # Run meta table
@@ -472,12 +451,11 @@ Plot Descriptions:
         "Total input sequences (FASTA headers)": total_input_seqs,
         "Total clusters": total_clusters,
         "Singleton clusters": singleton_clusters,
-        "Fewer-taxid clusters": few_taxid_clusters,
-        "Valid clusters": valid_clusters,
+        "Multi-member clusters": multi_member_clusters,
         "with_singletons": args.with_singletons,
         "clusters.parquet": os.path.basename(args.clusters_parquet),
         "remaining_clusters.parquet": os.path.basename(args.remaining_clusters_parquet),
-        "closest_relatives_log.tsv": os.path.basename(args.closest_log_tsv),
+        "manifest_files": len(args.manifest_tsvs),  # count of per-query manifests fed to diagnostics
     }
 
     # Also write a tiny text summary for convenience
