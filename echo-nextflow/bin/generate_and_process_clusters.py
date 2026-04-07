@@ -197,7 +197,7 @@ def write_all_sequences_to_fasta(df, fasta_file):
                 )
 
 
-def get_singleton_sequences(df, output_dir, with_singletons=False):
+def get_singleton_sequences(df, output_dir, with_singletons):
     """
     Write clusters of size 1 (singletons) to FASTA and either a manifest TSV
     (when with_singletons=True) or a summary TSV (when with_singletons=False).
@@ -275,7 +275,7 @@ def annotate_clusters(con, clusters_table):
     return con.execute(query).fetchdf()
 
 
-def process_clusters(output_dir, num_relatives, with_singletons=False):
+def process_clusters(output_dir, num_relatives, with_singletons):
     """
     Annotate clusters, write singleton side outputs, and return all multi-member
     clusters eligible for the relatives search.
