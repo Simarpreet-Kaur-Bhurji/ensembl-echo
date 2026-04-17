@@ -42,7 +42,7 @@ def main():
     ap.add_argument("--query_name", required=True)
     ap.add_argument("--num_of_rel", type=int, required=True)
     ap.add_argument("--out_fasta", required=True)
-    ap.add_argument("--out_log", required=True)
+    ap.add_argument("--out_manifest", required=True)  # replaces --out_log; flat per-protein manifest instead of per-cluster list rows
     args = ap.parse_args()
 
     qtid = int(args.query_tax_id)
@@ -67,23 +67,15 @@ def main():
           c.header,
           c.tax_id,
           c.seq_len,
-          COALESCE(c.confidence_level, 'NA') AS confidence_level,
           c.sequence,
           r.distance,
+          COUNT(DISTINCT c.tax_id) OVER (PARTITION BY c.Cluster_ID) AS cluster_unique_tax_ids,
 
           -- pick best protein per (Cluster_ID, tax_id)
+          -- tiebreak: distance → seq_len → header (alphabetical) for reproducibility
           ROW_NUMBER() OVER (
             PARTITION BY c.Cluster_ID, c.tax_id
-            ORDER BY
-              r.distance ASC,
-              c.seq_len DESC,
-              CASE COALESCE(c.confidence_level, 'NA')
-                WHEN 'high' THEN 1
-                WHEN 'high1' THEN 2
-                WHEN 'high2' THEN 3
-                WHEN 'high3' THEN 4
-                ELSE 99
-              END ASC
+            ORDER BY r.distance ASC, c.seq_len DESC, c.header ASC
           ) AS rn_taxon
         FROM remaining_clusters c
         JOIN ranked_taxa r
@@ -97,60 +89,68 @@ def main():
       ),
       topn AS (
         SELECT *,
-          -- pick top N taxa per cluster; ties on distance broken by seq_len DESC
+          -- pick up to N taxa per cluster; sparse clusters get all their taxa
+          -- tiebreak: distance → seq_len → tax_id (ascending) for reproducibility
           ROW_NUMBER() OVER (
             PARTITION BY Cluster_ID
-            ORDER BY distance ASC, seq_len DESC
+            ORDER BY distance ASC, seq_len DESC, tax_id ASC
           ) AS rn_cluster
         FROM best_per_taxon
       )
       SELECT
-        Cluster_ID, header, tax_id, distance, seq_len, confidence_level, sequence
+        Cluster_ID, header, tax_id, distance, seq_len, sequence,
+        rn_cluster, cluster_unique_tax_ids  -- exposed so manifest rows carry selection rank and diversity count
       FROM topn
-      WHERE rn_cluster <= {nrel}
-      ORDER BY Cluster_ID, distance ASC, seq_len DESC
+      WHERE rn_cluster <= LEAST(cluster_unique_tax_ids, {nrel})
+      ORDER BY Cluster_ID, distance ASC, seq_len DESC, tax_id ASC
     """
     ).fetchdf()
 
     # always create outputs (even if empty)
     if selected.empty:
-        with open(args.out_fasta, "w", encoding="utf-8") as _fh:
-            pass
-        pd.DataFrame([]).to_csv(args.out_log, sep="\t", index=False)
+        open(args.out_fasta, "w", encoding="utf-8").close()
+        # write empty manifest with correct columns so downstream concat always has a header
+        pd.DataFrame(columns=[
+            "query_tax_id", "query_name", "cluster_id", "protein_header",
+            "source_tax_id", "distance", "selection_rank", "cluster_size",
+            "unique_tax_ids", "selection_source",
+        ]).to_csv(args.out_manifest, sep="\t", index=False)
         return
 
     # Write FASTA for this query+chunk
     write_fasta(selected, args.out_fasta)
 
-    # Stats per cluster (same chunk)
+    # Total proteins per cluster (all proteins in the chunk, before selection);
+    # used in the manifest so Genebuild can see how large the cluster was
     stats = con.execute(
         """
-      SELECT Cluster_ID,
-             COUNT(*) AS num_proteins,
-             COUNT(DISTINCT CAST(tax_id AS INT)) AS num_unique_tax_ids
+      SELECT Cluster_ID, COUNT(*) AS cluster_size
       FROM remaining_clusters
       GROUP BY Cluster_ID
     """
     ).fetchdf()
+    cluster_size_map = stats.set_index("Cluster_ID")["cluster_size"].to_dict()
 
-    # Build one log row per Cluster_ID like your original code
-    log_rows = []
-    for cid, sub in selected.groupby("Cluster_ID", sort=False):
-        st = stats[stats["Cluster_ID"] == cid].iloc[0]
-        log_rows.append(
+    # Flat manifest: one row per selected protein rather than one row per cluster with embedded lists;
+    # this makes the output directly queryable by protein_header, source_tax_id, or distance
+    manifest_rows = []
+    for _, row in selected.iterrows():
+        manifest_rows.append(
             {
-                "cluster_id": cid,
-                "query_species_name": args.query_name,
-                "query_taxonomy_id": str(qtid),
-                "closest_relatives": sub["tax_id"].tolist(),
-                "closest_proteins": sub["header"].tolist(),
-                "closest_distances": sub["distance"].tolist(),
-                "num_proteins": int(st["num_proteins"]),
-                "num_unique_tax_ids": int(st["num_unique_tax_ids"]),
+                "query_tax_id": str(qtid),
+                "query_name": args.query_name,
+                "cluster_id": row["Cluster_ID"],
+                "protein_header": row["header"],
+                "source_tax_id": str(row["tax_id"]),
+                "distance": row["distance"],
+                "selection_rank": int(row["rn_cluster"]),
+                "cluster_size": int(cluster_size_map.get(row["Cluster_ID"], 0)),
+                "unique_tax_ids": int(row["cluster_unique_tax_ids"]),
+                "selection_source": "ranked_cluster",
             }
         )
 
-    pd.DataFrame(log_rows).to_csv(args.out_log, sep="\t", index=False)
+    pd.DataFrame(manifest_rows).to_csv(args.out_manifest, sep="\t", index=False)
 
 
 if __name__ == "__main__":

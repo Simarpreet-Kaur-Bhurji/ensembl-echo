@@ -155,17 +155,17 @@ def parse_cluster_file(raw_tsv, sequences_parquet, con, output_dir):
     df_final = con.execute(
         f"""
         SELECT c.Cluster_ID, c.header,
-               s.tax_id, s.sequence, s.name,
-               s.confidence_score, s.confidence_level, s.seq_len
+               s.tax_id, s.sequence, s.name, s.seq_len
         FROM clusters_flat AS c
         LEFT JOIN read_parquet('{sequences_parquet}') AS s
           ON c.header = s.header
         """
     ).fetchdf()
 
-    # Step 4: write output
+    # Step 4: write output — use duckdb to avoid pyarrow dependency
     print(f"[parse_cluster_file] clusters parquet head:\n{df_final.head(10)}")
-    df_final.to_parquet(output_parquet, index=False)
+    con.register("clusters_final", df_final)
+    con.execute(f"COPY clusters_final TO '{output_parquet}' (FORMAT PARQUET)")
     print(f"[parse_cluster_file] saved {output_parquet}")
     return output_parquet
 
@@ -197,12 +197,19 @@ def write_all_sequences_to_fasta(df, fasta_file):
                 )
 
 
-def get_singleton_sequences(df, output_dir):
+def get_singleton_sequences(df, output_dir, with_singletons):
     """
-    Write clusters of size 1 (singletons) to FASTA and a summary TSV.
+    Write clusters of size 1 (singletons) to FASTA and either a manifest TSV
+    (when with_singletons=True) or a summary TSV (when with_singletons=False).
 
-    Singletons are discarded from the main relatives search but optionally
-    included in the final output via params.with_singletons.
+    with_singletons=True  — singletons are included in the final per-query FASTA
+      and manifest. singleton_manifest.tsv carries the same column schema as the
+      closest-relatives manifest; query_tax_id and query_name are written as 'NA'
+      placeholders that MERGE_MANIFESTS_PER_QUERY fills in per query.
+      distance and selection_rank are 'NA' — singletons are not ranked by distance.
+
+    with_singletons=False — singletons are discarded; singleton_cluster_summary.tsv
+      records what was removed for diagnostics.
     """
     singletons = df[df["cluster_size"] == 1]
     print(f"[get_singleton_sequences] {len(singletons)} singleton proteins")
@@ -210,54 +217,33 @@ def get_singleton_sequences(df, output_dir):
     fasta_file = os.path.join(output_dir, "discarded_singletons.fa")
     write_all_sequences_to_fasta(singletons, fasta_file)
 
-    log_file = os.path.join(output_dir, "singleton_cluster_summary.tsv")
-    with open(log_file, "w", encoding="utf-8") as log:
-        log.write("Cluster_ID\tProtein_id\tTax_ID\n")
-        for _, row in singletons.iterrows():
-            log.write(f"{row['Cluster_ID']}\t{row['header']}\t{row['tax_id']}\n")
-
-    print(f"[get_singleton_sequences] wrote {fasta_file} and {log_file}")
-
-
-def get_clusters_with_fewer_taxids(df, num_relatives, output_dir):
-    """
-    Write multi-protein clusters that have fewer unique tax_ids than num_relatives.
-
-    These clusters can't yield the requested number of relatives, so they are
-    pulled out separately and optionally added back to final output.
-    """
-    few_taxid = df[(df["cluster_size"] > 1) & (df["unique_tax_ids"] < num_relatives)]
-    print(
-        f"[get_clusters_with_fewer_taxids] {len(few_taxid)} proteins in few-taxid clusters"
-    )
-
-    fasta_file = os.path.join(output_dir, "clusters_with_fewer_tax_ids.fa")
-    write_all_sequences_to_fasta(few_taxid, fasta_file)
-
-    # one row per cluster summarising its members
-    few_taxid_grouped = (
-        few_taxid.groupby("Cluster_ID")
-        .agg(
+    if with_singletons:
+        manifest_rows = [
             {
-                "header": ",".join,
-                "tax_id": lambda x: ",".join(map(str, x)),
-                "cluster_size": "first",
-                "unique_tax_ids": "first",
+                "query_tax_id":   "NA",
+                "query_name":     "NA",
+                "cluster_id":     row["Cluster_ID"],
+                "protein_header": row["header"],
+                "source_tax_id":  str(row["tax_id"]),
+                "distance":       "NA",
+                "selection_rank": "NA",
+                "cluster_size":   1,
+                "unique_tax_ids": 1,
+                "selection_source": "singleton",
             }
-        )
-        .reset_index()
-    )
+            for _, row in singletons.iterrows()
+        ]
+        out_file = os.path.join(output_dir, "singleton_manifest.tsv")
+        pd.DataFrame(manifest_rows).to_csv(out_file, sep="\t", index=False)
+    else:
+        out_file = os.path.join(output_dir, "singleton_cluster_summary.tsv")
+        with open(out_file, "w", encoding="utf-8") as log:
+            log.write("Cluster_ID\tProtein_id\tTax_ID\n")
+            for _, row in singletons.iterrows():
+                log.write(f"{row['Cluster_ID']}\t{row['header']}\t{row['tax_id']}\n")
 
-    log_file = os.path.join(output_dir, "clusters_with_fewer_taxids_summary.tsv")
-    with open(log_file, "w", encoding="utf-8") as log:
-        log.write("Cluster_ID\tProteins\tTax_ids\tTotal_Proteins\tTotal_TaxIDs\n")
-        for _, row in few_taxid_grouped.iterrows():
-            log.write(
-                f"{row['Cluster_ID']}\t{row['header']}\t{row['tax_id']}\t"
-                f"{row['cluster_size']}\t{row['unique_tax_ids']}\n"
-            )
+    print(f"[get_singleton_sequences] wrote {fasta_file} and {out_file}")
 
-    print(f"[get_clusters_with_fewer_taxids] wrote {fasta_file} and {log_file}")
 
 
 # ---------------------------------------------------------------------------
@@ -289,18 +275,18 @@ def annotate_clusters(con, clusters_table):
     return con.execute(query).fetchdf()
 
 
-def process_clusters(output_dir, num_relatives):
+def process_clusters(output_dir, num_relatives, with_singletons):
     """
-    Annotate clusters, write singleton / few-taxid side outputs, and return
-    the remaining clusters that are eligible for the relatives search.
+    Annotate clusters, write singleton side outputs, and return all multi-member
+    clusters eligible for the relatives search.
 
     Expects clusters*.parquet to exist in output_dir (written by parse_cluster_file).
-    Writes to output_dir: 
+    Writes to output_dir:
       - discarded_singletons.fa / singleton_cluster_summary.tsv
-      - clusters_with_fewer_tax_ids.fa / clusters_with_fewer_taxids_summary.tsv
 
     Returns:
-        DataFrame: clusters with cluster_size > 1 AND unique_tax_ids >= num_relatives
+        DataFrame: all clusters with cluster_size > 1 (SQL caps selection at
+        LEAST(unique_tax_ids, num_relatives) per cluster)
     """
     parquet_files = glob.glob(os.path.join(output_dir, "clusters*.parquet"))
     if not parquet_files:
@@ -317,13 +303,11 @@ def process_clusters(output_dir, num_relatives):
     df = annotate_clusters(con, "clusters")
     print(f"[process_clusters] annotated clusters head:\n{df.head()}")
 
-    get_singleton_sequences(df, output_dir)
-    get_clusters_with_fewer_taxids(df, num_relatives, output_dir)
+    get_singleton_sequences(df, output_dir, with_singletons=with_singletons)
 
-    # clusters eligible for relatives search: multi-member with enough distinct species
-    remaining_clusters = df[
-        (df["cluster_size"] > 1) & (df["unique_tax_ids"] >= num_relatives)
-    ]
+    # all multi-member clusters enter the SQL ranking path;
+    # LEAST(unique_tax_ids, num_relatives) in the query caps selection per cluster
+    remaining_clusters = df[df["cluster_size"] > 1]
     print(
     f" [process_clusters] remaining clusters: "
     f" {remaining_clusters['Cluster_ID'].nunique()} clusters, {len(remaining_clusters)} proteins"

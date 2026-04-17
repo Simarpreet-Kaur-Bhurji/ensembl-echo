@@ -34,6 +34,8 @@ The composite species key (sps_name_taxon_id_gca) is the species identifier in:
 
 import os
 import csv
+
+import duckdb
 import pandas as pd
 
 
@@ -141,8 +143,6 @@ def load_species_info(tsv_file):
                 "tax_id": taxon_id,
                 "gca": gca,
                 "file_path": row["file_path"].strip(),
-                "confidence_score": "NA",
-                "confidence_level": "NA",
             }
             print(
             f"  [load_species_info] loaded: key={key!r}  taxon_id={taxon_id}"
@@ -250,8 +250,7 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv, _out_parquet
       - name, tax_id, gca are looked up from species_map via the composite key
 
     Output columns (both TSV and Parquet):
-        protein_id, name, sequence_length, tax_id, gca,
-        confidence_score, confidence_level
+        protein_id, name, sequence_length, tax_id, gca
 
     The Parquet additionally stores the full header and sequence for downstream
     cluster-joining (parse_cluster_file uses header as the join key).
@@ -274,8 +273,6 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv, _out_parquet
                 "sequence_length",
                 "tax_id",
                 "gca",
-                "confidence_score",
-                "confidence_level",
             ]
         )
 
@@ -304,8 +301,6 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv, _out_parquet
                     "name": species_key,  # preserve the key so the header join still works
                     "tax_id": "NA",
                     "gca": "NA",
-                    "confidence_score": "NA",
-                    "confidence_level": "NA",
                 }
 
             writer.writerow(
@@ -315,8 +310,6 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv, _out_parquet
                     seq_len,
                     info["tax_id"],
                     info["gca"],
-                    info["confidence_score"],
-                    info["confidence_level"],
                 ]
             )
 
@@ -329,8 +322,6 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv, _out_parquet
                     info["name"],
                     info["tax_id"],
                     info["gca"],
-                    info["confidence_score"],
-                    info["confidence_level"],
                     seq_len,
                 ]
             )
@@ -350,14 +341,15 @@ def write_protein_metadata(combined_fasta, species_map, output_tsv, _out_parquet
             "name",
             "tax_id",
             "gca",
-            "confidence_score",
-            "confidence_level",
             "seq_len",
         ],
     )
 
     # derive parquet path from TSV path (same stem, different extension)
+    # use duckdb to write parquet to avoid pyarrow dependency
     parquet_file = output_tsv.rsplit(".", 1)[0] + ".parquet"
-    df.to_parquet(parquet_file, index=False)
+    con = duckdb.connect()
+    con.register("df", df)
+    con.execute(f"COPY df TO '{parquet_file}' (FORMAT PARQUET)")
     print(f"[write_protein_metadata] wrote {len(df)} proteins → {output_tsv}")
     print(f"[write_protein_metadata] wrote parquet               → {parquet_file}")

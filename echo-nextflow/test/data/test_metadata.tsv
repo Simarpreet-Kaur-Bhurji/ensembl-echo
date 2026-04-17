@@ -1,10 +1,7 @@
 sps_name	taxon_id	gca	file_path
-aspergillus_fumigatusa1163	451804	NA	aspergillus_fumigatusa1163.high_medium.fa
-beauveria bassiana	176275	NA	beauveria_bassiana.high_medium.fa
-blumeria	546991	NA	blumeria.high_medium.fa
-coregonus_sp._balchen	861768	GCA_902810595.1	Coregonus_sp._balchen_GCA_902810595.1.fa
-fusarium_fujikuroi	5127	NA	fusarium_fujikuroi.high_medium.fa
-gaeumannomyces_graminis	644352	NA	gaeumannomyces_graminis.high_medium.fa
-komagataella pastoris	644223	NA	komagataella_pastoris.high_medium.fa
-pyricularia_oryzae	318829	NA	pyricularia_oryzae.high_medium.fa
-trichoderma_reesei	431241	NA	trichoderma_reesei.high_medium.fa
+saccharomyces_cerevisiae	4932	GCA_000146045.2	saccharomyces_cerevisiae.fa
+schizosaccharomyces_pombe	4896	GCA_000002945.2	schizosaccharomyces_pombe.fa
+aspergillus_niger	5061	GCA_000002655.1	aspergillus_niger.fa
+neurospora_crassa	5141	GCA_000182925.2	neurospora_crassa.fa
+candida_albicans	5476	GCA_000182965.3	candida_albicans.fa
+yarrowia_lipolytica	4952	GCA_000002525.1	yarrowia_lipolytica.fa

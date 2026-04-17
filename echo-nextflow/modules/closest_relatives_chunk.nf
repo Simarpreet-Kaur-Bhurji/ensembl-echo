@@ -11,7 +11,7 @@ process CLOSEST_RELATIVES_CHUNK {
 
   output:
     path "${query_tax_id}_${chunk_file.simpleName}.fa",  emit: partial_fastas
-    path "${query_tax_id}_${chunk_file.simpleName}.tsv", emit: partial_logs
+    path "${query_tax_id}_${chunk_file.simpleName}.tsv", emit: partial_manifests  // renamed from partial_logs; now flat per-protein rows
 
   script:
   """
@@ -22,7 +22,7 @@ process CLOSEST_RELATIVES_CHUNK {
     --query_name '${query_name}' \
     --num_of_rel ${params.num_of_rel} \
     --out_fasta ${query_tax_id}_${chunk_file.simpleName}.fa \
-    --out_log ${query_tax_id}_${chunk_file.simpleName}.tsv
+    --out_manifest ${query_tax_id}_${chunk_file.simpleName}.tsv
   """
 }
 

@@ -1,8 +1,9 @@
 /* Step 10b: Generate QC diagnostics PDF and summary.
- * Input:  clusters_parquet, singleton_summary_tsv, remaining_clusters,
- *         few_taxids_summary_tsv, closest_log_tsv, input_fasta,
- *         cluster_summary_txt, pipeline_summary_txt
+ * Input:  clusters_parquet, remaining_clusters, manifest_tsvs,
+ *         input_fasta, cluster_summary_txt, pipeline_summary_txt
  * Output: diagnostics_out/ directory, diagnostics.pdf, diagnostics_summary.txt
+ * Note:   singleton count derived from clusters_parquet (cluster_size==1) —
+ *         no separate singleton file needed.
  */
 
 process MAKE_DIAGNOSTICS {
@@ -12,14 +13,11 @@ process MAKE_DIAGNOSTICS {
 
   input:
     path clusters_parquet
-    path singleton_summary_tsv
     path remaining_clusters
-    path few_taxids_summary_tsv
-    path closest_log_tsv
+    path manifest_tsvs  // all per-query manifests collected; replaces the single closest_relatives_log.tsv
     path input_fasta
     path cluster_summary_txt
     path pipeline_summary_txt
-    
 
   output:
     path "diagnostics_out", emit: diagnostics_dir
@@ -32,10 +30,8 @@ process MAKE_DIAGNOSTICS {
 
   echo_make_diagnostics.py \
     --clusters_parquet ${clusters_parquet} \
-    --singleton_summary_tsv ${singleton_summary_tsv} \
     --remaining_clusters_parquet ${remaining_clusters} \
-    --few_taxids_summary_tsv ${few_taxids_summary_tsv} \
-    --closest_log_tsv ${closest_log_tsv} \
+    --manifest_tsvs ${manifest_tsvs} \
     --input_fasta ${input_fasta} \
     --cluster_summary_txt ${cluster_summary_txt} \
     --pipeline_summary_txt ${pipeline_summary_txt} \
@@ -43,4 +39,3 @@ process MAKE_DIAGNOSTICS {
     --outdir diagnostics_out
   """
 }
-

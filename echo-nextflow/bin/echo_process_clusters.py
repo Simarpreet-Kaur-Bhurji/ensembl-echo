@@ -30,6 +30,8 @@ Writes to work dir:
 """
 import argparse
 
+import duckdb
+
 from generate_and_process_clusters import process_clusters
 
 
@@ -48,16 +50,27 @@ def main():
         default="remaining_clusters.parquet",
         help="Output path for remaining clusters",
     )
+    p.add_argument(
+        "--with_singletons",
+        action="store_true",
+        default=False,
+        help="When set, write singleton_manifest.tsv instead of singleton_cluster_summary.tsv",
+    )
     args = p.parse_args()
 
-    print(f"[echo_process_clusters] num_rel:       {args.num_rel}")
-    print(f"[echo_process_clusters] out_remaining: {args.out_remaining}")
+    print(f"[echo_process_clusters] num_rel:          {args.num_rel}")
+    print(f"[echo_process_clusters] out_remaining:    {args.out_remaining}")
+    print(f"[echo_process_clusters] with_singletons:  {args.with_singletons}")
 
     # process_clusters reads clusters*.parquet from CWD (Nextflow work dir)
-    remaining_df = process_clusters(output_dir=".", num_relatives=args.num_rel)
+    remaining_df = process_clusters(output_dir=".", num_relatives=args.num_rel,
+                                    with_singletons=args.with_singletons)
 
     # write remaining clusters as an explicit Nextflow output file
-    remaining_df.to_parquet(args.out_remaining, index=False)
+    # use duckdb (already a pipeline dependency) to avoid requiring pyarrow
+    con = duckdb.connect()
+    con.register("remaining_df", remaining_df)
+    con.execute(f"COPY remaining_df TO '{args.out_remaining}' (FORMAT PARQUET)")
     print(
     f" [OK] wrote {args.out_remaining}  ({remaining_df['Cluster_ID'].nunique()} clusters,"
     f" {len(remaining_df)} proteins)"
