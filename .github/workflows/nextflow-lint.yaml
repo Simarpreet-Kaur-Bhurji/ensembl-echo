@@ -1,0 +1,64 @@
+name: Nextflow Lint
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint:
+    name: Lint Nextflow Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Nextflow
+        run: |
+          export NXF_VER=25.10.0
+          curl -s https://get.nextflow.io | bash
+          sudo mv nextflow /usr/local/bin/
+          chmod +x /usr/local/bin/nextflow
+          nextflow -version
+        env:
+          NXF_SYNTAX_PARSER: v1
+
+      - name: Run Nextflow Lint (Check Only)
+        run: |
+          echo "Running Nextflow lint on all .nf files..."
+          nextflow lint -o concise echo-nextflow/modules/ || true
+          nextflow lint -o concise echo-nextflow/workflows/ || true
+          nextflow lint -o concise echo-nextflow/main.nf || true
+
+          LINT_EXIT_CODE=$?
+
+          if [ $LINT_EXIT_CODE -ne 0 ]; then
+            echo "Linting failed! Please fix the errors above."
+            echo ""
+            echo "To fix formatting issues automatically, run locally:"
+            echo "  export NXF_VER=25.10.0"
+            echo "  nextflow lint -format echo-nextflow/"
+            exit 1
+          else
+            echo "All Nextflow files passed linting!"
+          fi
+
+      - name: Run Nextflow Lint (Full Output on Failure)
+        if: failure()
+        run: |
+          echo "Running lint again with full output for debugging..."
+          nextflow lint -o full echo-nextflow/modules/ || true
+          nextflow lint -o full echo-nextflow/workflows/ || true
+          nextflow lint -o full echo-nextflow/main.nf || true

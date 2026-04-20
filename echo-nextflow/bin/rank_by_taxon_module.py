@@ -33,7 +33,6 @@ import pandas as pd
 
 # NCBITaxa database — initialised with ete3's default path (~/.etetoolkit/taxa.sqlite).
 # To use a custom path pass --ncbi_taxa_db to echo_rank_taxa.py, which calls init_ncbi().
-# Previous hardcoded path (kept for reference): /homes/sbhurji/.etetoolkit/taxa.sqlite
 ncbi = NCBITaxa()
 
 

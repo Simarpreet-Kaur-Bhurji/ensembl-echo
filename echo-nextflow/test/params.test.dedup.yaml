@@ -1,6 +1,6 @@
 input_fasta_dir: "test/data/input_fastas"
 metadata_tsv: "test/data/test_metadata.tsv"
-outdir: "nextflow_container_test"
+outdir: "nextflow_test_dedup"
 query_species: "test/data/test_query.tsv"
 
 num_of_rel: 5
@@ -10,9 +10,11 @@ coverage: 0.8
 cov_mode: 1
 
 with_singletons: true
+dedup_sequences: true
 
 # Path to your local NCBITaxa sqlite (avoids ete3 re-downloading on first use)
 ncbi_taxa_db: "~/.etetoolkit/taxa.sqlite"
 
 # Characters per line in combined_input_fasta.fa (60 = standard FASTA)
 fasta_line_width: 60
+
