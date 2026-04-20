@@ -1,0 +1,16 @@
+# Restart mode: reuse clustering from a previous run for a new query species.
+# Skips PARSE_INPUT_FASTA, RUN_MMSEQS, PARSE_CLUSTERS, PROCESS_CLUSTERS.
+existing_clusters_dir: "nextflow_test"
+outdir: "nextflow_test_restart"
+query_species: "test/data/test_query_restart.tsv"
+
+num_of_rel: 5
+clusters_per_chunk: 50
+with_singletons: false
+
+
+# Path to your local NCBITaxa sqlite (avoids ete3 re-downloading on first use)
+ncbi_taxa_db: "~/.etetoolkit/taxa.sqlite"
+
+# Characters per line in combined_input_fasta.fa (60 = standard FASTA)
+fasta_line_width: 60

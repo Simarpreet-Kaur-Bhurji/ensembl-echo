@@ -25,6 +25,8 @@ Steps 1–4 can be skipped for new query species by providing `existing_clusters
 - `nextflow.config` – profiles + resource configuration
 - `nextflow_schema.json` – parameter schema (see [Parameter schema](#parameter-schema) below)
 - `params.yaml` – typical run parameters
+- `Dockerfile` – container definition for the pipeline runtime environment
+- `requirements.txt` – Python package dependencies
 
 ---
 
@@ -38,24 +40,43 @@ Check:
 nextflow -version
 ```
 
-### 2) Python environment (venv + requirements.txt)
-Create and activate a virtual environment, then install dependencies:
+### 2) Container runtime
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -r requirements.txt
+All pipeline tools (Python packages, MMseqs2, DuckDB) are packaged in a single Docker image published to the GitHub Container Registry:
+
+```
+ghcr.io/simarpreet-kaur-bhurji/echo-container:latest
 ```
 
-The pipeline runs the scripts in `bin/` using your active Python environment on the compute nodes.
-Make sure your Slurm job environment loads the same Python/venv (or module) consistently.
+The image is defined by the `Dockerfile` at the repository root and built from `requirements.txt`.
 
-### 3) MMseqs2 container (Singularity)
-The pipeline runs MMseqs2 via Singularity. You must have:
+**On the cluster (Singularity):**
+Pull the image once as a `.sif` file, then use `-profile singularity,slurm`:
 
-- Singularity available on compute nodes
-- A valid MMseqs2 image path set via `params.mmseqs_singularity_image`
+```bash
+singularity pull echo-container_latest.sif docker://ghcr.io/simarpreet-kaur-bhurji/echo-container:latest
+```
+
+**Locally (Docker):**
+Pull the image and use `-profile docker,local`:
+
+```bash
+docker pull ghcr.io/simarpreet-kaur-bhurji/echo-container:latest
+```
+
+### 3) NCBI Taxonomy database
+
+The taxonomy-ranking step requires a local copy of the NCBI Taxonomy database managed by [ete3](https://etetoolkit.org/).
+
+**Default location:** `~/.etetoolkit/taxa.sqlite`
+
+Download it once with:
+
+```bash
+python -c "from ete3 import NCBITaxa; NCBITaxa()"
+```
+
+On the cluster, Singularity automatically bind-mounts `$HOME` into the container (`singularity.autoMounts = true` in `nextflow.config`), so the default path works without extra configuration. For Docker, pass the path explicitly via `ncbi_taxa_db` in your params YAML and bind-mount the directory (see [Parameters](#parameters-paramsyaml) below).
 
 ---
 
@@ -109,13 +130,11 @@ Each query species produces its own `*_all_relatives.fa` and `*_manifest.tsv` in
 - `metadata_tsv` – path to the metadata TSV
 - `query_species` – path to the query species TSV
 - `outdir` – output directory
-- `mmseqs_singularity_image` – path to the MMseqs2 `.sif` image
 
 **Clustering (MMseqs2):**
 - `min_seq_id` – minimum sequence identity (default: `0.75`)
 - `coverage` – minimum alignment coverage (default: `0.8`)
 - `cov_mode` – coverage mode: `0`=bidirectional, `1`=target, `2`=query, `3`=target+query (default: `0`)
-- `mmseqs_threads` – CPU threads for MMseqs2 (default: `32`)
 
 **Relatives:**
 - `num_of_rel` – maximum number of closest relatives per query species per cluster (default: `5`). Selection uses a three-tier tiebreak: (1) lowest taxonomic distance, (2) longer sequence if distance is equal, (3) first row if both are equal. Clusters with fewer distinct taxa than `num_of_rel` return all available taxa.
@@ -151,11 +170,9 @@ input_fasta_dir: "/path/to/input_fastas"   # optional if file_path in TSV is abs
 num_of_rel: 5
 clusters_per_chunk: 10000
 
-mmseqs_singularity_image: "/path/to/mmseqs2_latest.sif"
 min_seq_id: 0.75
 coverage: 0.8
 cov_mode: 1
-mmseqs_threads: 16
 
 with_singletons: true
 dedup_sequences: false
@@ -174,9 +191,19 @@ ncbi_taxa_db: "/shared/path/taxa.sqlite"
 
 ### Standard run
 
+**On the cluster (Singularity + SLURM):**
 ```bash
 time nextflow run main.nf \
-  -profile slurm \
+  -profile singularity,slurm \
+  -params-file params.yaml \
+  -with-report \
+  -resume
+```
+
+**Locally (Docker):**
+```bash
+time nextflow run main.nf \
+  -profile docker,local \
   -params-file params.yaml \
   -with-report \
   -resume
@@ -186,7 +213,7 @@ The `time` prefix prints total wall-clock time when the run completes.
 The `-with-report` flag produces a Nextflow HTML report (`report.html`) in the run directory — open it in a browser to see per-process CPU, memory, and wall-clock time for each task.
 The `-resume` flag reuses cached task outputs from previous runs so only changed or failed steps are re-executed.
 
-### Slurm (recommended)
+### Slurm (recommended for cluster)
 
 Submit using a batch script like:
 
@@ -202,11 +229,8 @@ Submit using a batch script like:
 
 set -euo pipefail
 
-# Activate your python environment (edit as needed)
-source /path/to/echo-nextflow/.venv/bin/activate
-
 time nextflow run main.nf \
-  -profile slurm \
+  -profile singularity,slurm \
   -params-file params.yaml \
   -with-report \
   -resume
@@ -246,7 +270,11 @@ fasta_line_width: 60
 
 Run:
 ```bash
-nextflow run main.nf -profile slurm -params-file params.restart.yaml -with-report
+# On the cluster:
+nextflow run main.nf -profile singularity,slurm -params-file params.restart.yaml -with-report
+
+# Locally:
+nextflow run main.nf -profile docker,local -params-file params.restart.yaml -with-report
 ```
 
 The clustering artifacts (`combined_input_fasta.fa`, `clusters.parquet`, etc.) remain
@@ -341,10 +369,10 @@ If `dedup_sequences=true` but no duplicate sequences exist, no report is written
 - `report.html` — written to the run directory when `-with-report` is used. Shows per-process CPU, memory, and wall-clock time.
 
 ### Notes on reproducibility
-The main reproducibility dependencies are the Python environment and the MMseqs2 container. For consistent runs use:
+The main reproducibility dependencies are the container image and the NCBI taxonomy database. For consistent runs use:
 
-- pinned `requirements.txt`
-- fixed MMseqs `.sif` path/version
+- a pinned image digest instead of `:latest` (e.g. `ghcr.io/simarpreet-kaur-bhurji/echo-container@sha256:<digest>`)
+- the same `taxa.sqlite` snapshot across runs, or a shared central copy
 - fixed Nextflow version (optional but recommended)
 
 ---
@@ -383,5 +411,5 @@ bash .command.run
 If outputs look stale, rerun with `-resume` to pick up from where the pipeline left off:
 
 ```bash
-nextflow run main.nf -profile slurm -params-file params.yaml -resume
+nextflow run main.nf -profile singularity,slurm -params-file params.yaml -resume
 ```

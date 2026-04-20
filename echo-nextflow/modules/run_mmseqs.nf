@@ -1,14 +1,12 @@
-/* Step 2: cluster all input proteins with MMseqs2 easy-cluster via Singularity.
+/* Step 2: cluster all input proteins with MMseqs2 easy-cluster via container.
  * Input:  combined_input_fasta.fa  (from PARSE_INPUT_FASTA)
  * Output: mmseqs_results_cluster.tsv — two-column (seed, member) TSV
- * cpus is set from params.mmseqs_threads so Singularity uses all allocated cores.
+ * Threads are set per-profile in nextflow.config (e.g., 16 for slurm, 1 for local).
  */
 process RUN_MMSEQS {
 
   tag "mmseqs"
   publishDir params.outdir, mode: 'copy'
-
-  cpus params.mmseqs_threads
 
   input:
     path combined_fasta
@@ -22,7 +20,6 @@ process RUN_MMSEQS {
     --input_fasta ${combined_fasta} \
     --out_prefix mmseqs_results \
     --tmp_dir tmp \
-    --singularity_image ${params.mmseqs_singularity_image} \
     --min_seq_id ${params.min_seq_id} \
     --coverage ${params.coverage} \
     --cov_mode ${params.cov_mode} \
