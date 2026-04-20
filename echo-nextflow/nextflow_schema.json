@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12",
+  "$id": "https://github.com/Ensembl/echo-nextflow/blob/main/nextflow_schema.json",
+  "title": "ECHO Pipeline Parameters",
+  "description": "Nextflow parameter schema for the ECHO (Evolutionary Closest Homologue) pipeline.",
+  "type": "object",
+
+  "definitions": {
+
+    "input_output": {
+      "title": "Input / Output",
+      "type": "object",
+      "description": "Paths to input data and the output directory.",
+      "properties": {
+        "metadata_tsv": {
+          "type": "string",
+          "description": "Path to the 4-column metadata TSV (sps_name, taxon_id, gca, file_path).",
+          "format": "file-path"
+        },
+        "input_fasta_dir": {
+          "type": "string",
+          "description": "Optional base directory for resolving relative file_path entries in the metadata TSV. Omit if all file_path values are absolute.",
+          "format": "directory-path"
+        },
+        "query_species": {
+          "type": "string",
+          "description": "Path to the query species TSV (columns: sps_name, tax_id).",
+          "format": "file-path"
+        },
+        "outdir": {
+          "type": "string",
+          "description": "Directory where pipeline outputs are published.",
+          "default": "results",
+          "format": "directory-path"
+        },
+        "workdir": {
+          "type": "string",
+          "description": "Nextflow work directory (default: 'work'). Override when the default filesystem is unsuitable (e.g. read-only scratch).",
+          "default": "work",
+          "format": "directory-path"
+        }
+      },
+      "required": ["metadata_tsv", "query_species", "outdir"]
+    },
+
+    "fasta_options": {
+      "title": "FASTA Options",
+      "type": "object",
+      "description": "Controls how the combined FASTA is written.",
+      "properties": {
+        "fasta_line_width": {
+          "type": "integer",
+          "description": "Characters per sequence line in the output combined FASTA.",
+          "default": 60,
+          "minimum": 10
+        }
+      }
+    },
+
+    "clustering": {
+      "title": "MMseqs2 Clustering",
+      "type": "object",
+      "description": "Parameters for the MMseqs2 easy-cluster step. CPU threads and memory are configured per profile in nextflow.config.",
+      "properties": {
+        "min_seq_id": {
+          "type": "number",
+          "description": "Minimum sequence identity threshold for clustering (0–1).",
+          "default": 0.75,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "coverage": {
+          "type": "number",
+          "description": "Minimum alignment coverage threshold for clustering (0–1).",
+          "default": 0.8,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "cov_mode": {
+          "type": "integer",
+          "description": "MMseqs2 coverage mode (0=bidirectional, 1=target, 2=query, 3=target+query length).",
+          "default": 0,
+          "enum": [0, 1, 2, 3]
+        }
+      }
+    },
+
+    "relatives": {
+      "title": "Closest Relatives",
+      "type": "object",
+      "description": "Parameters controlling which relatives are selected per query.",
+      "properties": {
+        "num_of_rel": {
+          "type": "integer",
+          "description": "Number of closest relatives to retrieve per query species per cluster.",
+          "default": 5,
+          "minimum": 1
+        },
+        "clusters_per_chunk": {
+          "type": "integer",
+          "description": "Number of clusters per parallel chunk when searching for closest relatives.",
+          "default": 10000,
+          "minimum": 1
+        },
+        "with_singletons": {
+          "type": "boolean",
+          "description": "Include singleton proteins (clusters of size 1) in the final all_relatives FASTA. Singletons are low-support but retained as coverage evidence for rare or divergent families. Set to false for ranked-only output.",
+          "default": true
+        }
+      }
+    },
+
+    "deduplication": {
+      "title": "Sequence Deduplication",
+      "type": "object",
+      "description": "Options for deduplicating identical sequences in the output.",
+      "properties": {
+        "dedup_sequences": {
+          "type": "boolean",
+          "description": "Deduplicate exact-sequence duplicates in the final all_relatives FASTA. When enabled, identical sequences are merged and a dedup_report.tsv is written per query.",
+          "default": false
+        }
+      }
+    },
+
+    "taxonomy": {
+      "title": "Taxonomy",
+      "type": "object",
+      "description": "NCBI taxonomy database settings.",
+      "properties": {
+        "ncbi_taxa_db": {
+          "type": "string",
+          "description": "Path to a pre-built NCBITaxa sqlite database. Omit to use ete3's default (~/.etetoolkit/taxa.sqlite). Useful when running on a shared cluster where a central copy of the DB is available.",
+          "format": "file-path"
+        }
+      }
+    },
+
+    "resume_mode": {
+      "title": "Resume / Existing Clusters",
+      "type": "object",
+      "description": "Skip re-clustering by reusing outputs from a previous pipeline run.",
+      "properties": {
+        "existing_clusters_dir": {
+          "type": "string",
+          "description": "Path to a previous pipeline output directory. When set, steps 1–4 (parsing, MMseqs2, cluster filtering) are skipped and their outputs are read from this directory.",
+          "format": "directory-path"
+        }
+      }
+    }
+  },
+
+  "allOf": [
+    { "$ref": "#/definitions/input_output" },
+    { "$ref": "#/definitions/fasta_options" },
+    { "$ref": "#/definitions/clustering" },
+    { "$ref": "#/definitions/relatives" },
+    { "$ref": "#/definitions/deduplication" },
+    { "$ref": "#/definitions/taxonomy" },
+    { "$ref": "#/definitions/resume_mode" }
+  ]
+}
