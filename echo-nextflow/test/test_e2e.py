@@ -41,8 +41,11 @@ Run pipeline (once, or whenever test data changes):
   cd echo-nextflow
   nextflow run workflows/echo.nf -params-file test/params.test.yaml
 
-Run this test against existing output:
+Run this test against existing output (default nextflow_test/):
   pytest echo-nextflow/test/test_e2e.py -v
+
+Run this test against a specific output directory:
+  pytest echo-nextflow/test/test_e2e.py -v --outdir /path/to/your/run
 
 Run this test AND execute the pipeline:
   pytest echo-nextflow/test/test_e2e.py -v --run-pipeline
@@ -56,8 +59,19 @@ import sys
 import duckdb
 import pandas as pd
 import pytest
+import yaml
 
 log = logging.getLogger("echo.test.e2e")
+
+
+def _outdir_from_params(params_file: str) -> str:
+    """Read the outdir value from a params YAML file, resolved relative to NF_DIR."""
+    with open(params_file, encoding="utf-8") as fh:
+        params = yaml.safe_load(fh)
+    outdir = params.get("outdir")
+    if not outdir:
+        raise ValueError(f"'outdir' not set in {params_file}")
+    return outdir if os.path.isabs(outdir) else os.path.join(NF_DIR, outdir)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -108,8 +122,18 @@ EXPECTED_ALL_RELATIVES = 30       # relatives + 1 singleton
 def outdir(request):
     """
     Returns the pipeline output directory.
+    If --outdir is passed, uses that path directly (no pipeline execution).
     If --run-pipeline is passed, executes the pipeline first and fails fast on error.
+    Falls back to the default nextflow_test/ location.
     """
+    custom_outdir = request.config.getoption("--outdir")
+    if custom_outdir:
+        resolved = os.path.abspath(custom_outdir)
+        if not os.path.isdir(resolved):
+            pytest.skip(f"--outdir path not found: {resolved}")
+        log.info("Using custom output directory: %s", resolved)
+        return resolved
+
     if request.config.getoption("--run-pipeline"):
         log.info("Running Nextflow pipeline (this may take several minutes)...")
         result = subprocess.run(
@@ -120,6 +144,9 @@ def outdir(request):
         )
         assert result.returncode == 0, "Nextflow pipeline failed — check output above"
         log.info("Pipeline complete.")
+        resolved = _outdir_from_params(PARAMS_FILE)
+        log.info("Output directory (from params): %s", resolved)
+        return resolved
     else:
         log.info("Skipping pipeline execution (pass --run-pipeline to run it).")
 

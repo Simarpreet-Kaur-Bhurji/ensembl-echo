@@ -39,6 +39,12 @@ def pytest_addoption(parser):
         help="(test_e2e) Execute the Nextflow pipeline before validating outputs. "
              "Requires 'nextflow' on PATH and the singularity image in params.test.yaml.",
     )
+    parser.addoption(
+        "--outdir",
+        default=None,
+        help="(test_e2e) Path to an existing pipeline output directory to validate. "
+             "Overrides the default nextflow_test/ location.",
+    )
 
 
 def pytest_configure(config):

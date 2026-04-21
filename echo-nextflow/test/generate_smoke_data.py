@@ -44,7 +44,9 @@ Coverage (cov_mode=1, shorter seq): base is always fully covered by longer varia
 MMseqs2 parameters used (from params.test.yaml):
   min_seq_id=0.75, coverage=0.8, cov_mode=1
 
-Expected clustering result: 6 clusters, one per family, each containing 6 proteins.
+Expected clustering result: 7 clusters — 6 multi-member (one per family, 6 proteins each)
++ 1 singleton (aspergillus_niger family 5, asp05) whose sequence is fully random and
+shares <10% identity with the family-5 base, so MMseqs2 never groups it.
 
 Tax IDs are real NCBI taxonomy IDs (fungi) so ete3/NCBITaxa can compute distances.
 
@@ -103,6 +105,13 @@ def make_base(family_idx: int) -> str:
     return "".join(rng.choices(AA, k=FAMILY_LENGTHS[family_idx]))
 
 
+def make_singleton(family_idx: int) -> str:
+    """Fully random sequence used for the asp05 singleton — shares ~5% identity with
+    the family-5 base by chance, well below min_seq_id=0.75."""
+    rng = random.Random(99999 + family_idx * 7)
+    return "".join(rng.choices(AA, k=FAMILY_LENGTHS[family_idx]))
+
+
 def make_variant(base: str, species_idx: int, family_idx: int) -> str:
     """
     Mutate N_MUTATIONS internal positions and append 0–MAX_EXTENSION random AA at the
@@ -156,10 +165,14 @@ def main() -> None:
     # --- per-species FASTA files ---
     for sps_idx, (sps_name, _tax_id, _gca) in enumerate(SPECIES):
         prefix = sps_name[:3]  # e.g. "sac", "sch", "asp", "neu", "can", "yar"
-        records = [
-            (f"{prefix}{fam_idx + 1:02d}", make_variant(bases[fam_idx], sps_idx, fam_idx))
-            for fam_idx in range(N_FAMILIES)
-        ]
+        records = []
+        for fam_idx in range(N_FAMILIES):
+            # asp05: aspergillus_niger (sps_idx=2), family 5 (fam_idx=4) is the singleton
+            if sps_idx == 2 and fam_idx == 4:
+                seq = make_singleton(fam_idx)
+            else:
+                seq = make_variant(bases[fam_idx], sps_idx, fam_idx)
+            records.append((f"{prefix}{fam_idx + 1:02d}", seq))
         path = os.path.join(FASTA_DIR, f"{sps_name}.fa")
         write_fasta(path, records)
         print(f"  {path}  ({len(records)} proteins)")
@@ -183,8 +196,9 @@ def main() -> None:
     print(f"  {query_path}  ({len(QUERIES)} queries)")
 
     print("\nDone.")
-    print("\nExpected clustering outcome: 6 clusters, one per protein family,")
-    print("each containing 6 proteins (one per species).")
+    print("\nExpected clustering outcome: 7 clusters.")
+    print("  6 multi-member clusters (one per family, 6 proteins each).")
+    print("  1 singleton: asp05 (aspergillus_niger, family 5).")
     print("\nRun the pipeline with:")
     print("  cd echo-nextflow")
     print("  nextflow run workflows/echo.nf -params-file test/params.test.yaml")

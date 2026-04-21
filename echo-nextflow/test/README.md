@@ -13,7 +13,7 @@ end of every session (`info_<timestamp>.log` and `debug_<timestamp>.log`).
 ## Prerequisites
 
 ```bash
-pip install pytest pytest-repeat pandas duckdb
+pip install pytest pytest-repeat pandas duckdb pyyaml
 ```
 
 ### NCBI Taxonomy database (`taxa.sqlite`)
@@ -105,7 +105,14 @@ These produce `nextflow_test/` and `nextflow_test_no_singletons/` respectively.
 **Step 2** — Run the e2e tests:
 
 ```bash
+# Validate output in the default nextflow_test/ location:
 pytest echo-nextflow/test/test_e2e.py -v --log-cli-level=INFO
+
+# Validate output in a specific directory:
+pytest echo-nextflow/test/test_e2e.py -v --log-cli-level=INFO --outdir /path/to/your/run
+
+# Run the pipeline (using outdir from params.test.yaml) then validate:
+pytest echo-nextflow/test/test_e2e.py -v --log-cli-level=INFO --run-pipeline
 ```
 
 **What is tested:**

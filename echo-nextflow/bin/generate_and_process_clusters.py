@@ -25,86 +25,16 @@ Functions used by the Nextflow pipeline:
   - get_singleton_sequences()     – internal helper
   - get_clusters_with_fewer_taxids() – internal helper
 
-Note: run_mmseqs() is a standalone utility kept for reference; the Nextflow
-pipeline drives MMseqs2 via echo_run_mmseqs.sh instead.
+Note: The Nextflow pipeline drives MMseqs2 via echo_run_mmseqs.sh.
 """
 
 import glob
 import os
-import subprocess
-import time
 from collections import defaultdict
 
 import pandas as pd
 import duckdb
 
-
-
-# ---------------------------------------------------------------------------
-# MMseqs2 wrapper (standalone utility; not called by NF pipeline)
-# ---------------------------------------------------------------------------
-
-
-def run_mmseqs(
-    input_fasta,
-    output_dir,
-    min_seq_id=0.75,
-    coverage=0.8,
-    cov_mode=1,
-    threads=16,
-    singularity_image="mmseqs2_latest.sif",
-):
-    """
-    Run MMseqs2 easy-cluster via Singularity and return the cluster TSV path.
-
-    Not called by the Nextflow pipeline (which uses echo_run_mmseqs.sh).
-    Kept as a standalone utility for ad-hoc use.
-    """
-    os.makedirs(output_dir, exist_ok=True)
-
-    # MMseqs2 easy-cluster requires: input, output prefix, tmp dir
-    output_prefix = os.path.join(output_dir, "mmseqs_results")
-    tmp_dir = os.path.join(output_dir, "tmp")
-    os.makedirs(tmp_dir, exist_ok=True)
-
-    cmd = [
-        "singularity",
-        "exec",
-        singularity_image,
-        "mmseqs",
-        "easy-cluster",
-        input_fasta,
-        output_prefix,
-        tmp_dir,
-        "--min-seq-id",
-        str(min_seq_id),
-        "-c",
-        str(coverage),
-        "--cov-mode",
-        str(cov_mode),
-        "--threads",
-        str(threads),
-    ]
-
-    print("Running command:")
-    print(" ".join(cmd))
-
-    start_time = time.time()
-    subprocess.run(cmd, check=True)
-    elapsed = time.time() - start_time
-    minutes, seconds = divmod(int(elapsed), 60)
-
-    runtime_message = (
-        f"MMseqs2 clustering completed in {minutes} min {seconds} sec.\n"
-        f"Results stored in: {output_dir}\n"
-    )
-    summary_file = os.path.join(output_dir, "cluster_summary.txt")
-    mode = "a" if os.path.exists(summary_file) else "w"
-    with open(summary_file, mode, encoding="utf-8") as f:
-        f.write("\nCluster Summary Report\n======================\n\n")
-        f.write(runtime_message)
-
-    return f"{output_prefix}_cluster.tsv"
 
 
 # ---------------------------------------------------------------------------
