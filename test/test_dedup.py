@@ -12,7 +12,7 @@ Tests:
 Headers use the real pipeline format: {prefix}|{species}_{tax_id}_{assembly}|{seq_len}
 
 Run with:
-  pytest echo-nextflow/test/test_dedup.py -v
+  pytest test/test_dedup.py -v
 """
 
 import logging
@@ -381,10 +381,9 @@ def test_real_sequences_mixed_header_and_seq_dups(tmp_path):
 # Dedup on real pipeline output (requires nextflow_test_dedup/ to exist)
 #
 # Run the pipeline first:
-#   cd echo-nextflow
 #   nextflow run workflows/echo.nf -params-file test/params.test.dedup.yaml
 # Then run this file:
-#   pytest echo-nextflow/test/test_dedup.py -v
+#   pytest test/test_dedup.py -v
 # ---------------------------------------------------------------------------
 
 import os as _os
@@ -408,8 +407,7 @@ def dedup_outdir():
     if not _os.path.isdir(_DEDUP_DIR):
         pytest.skip(
             f"nextflow_test_dedup/ not found — run the pipeline first:\n"
-            "  cd echo-nextflow && "
-            "nextflow run workflows/echo.nf -params-file test/params.test.dedup.yaml"
+            "  nextflow run workflows/echo.nf -params-file test/params.test.dedup.yaml"
         )
     _log.info("dedup outdir: %s", _DEDUP_DIR)
     return _DEDUP_DIR

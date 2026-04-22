@@ -8,15 +8,15 @@ from a previous full run, skipping the expensive clustering steps.
 
 Prerequisites:
   1. Run the standard pipeline first (nextflow_test/ must exist):
-       cd echo-nextflow
+       cd repo root
        ./nextflow run main.nf -params-file test/params.test.yaml
 
   2. Run the restart pipeline:
-       cd echo-nextflow
+       cd repo root
        ./nextflow run main.nf -params-file test/params.test.restart.yaml
 
   3. Run this test:
-       pytest echo-nextflow/test/test_restart.py -v
+       pytest test/test_restart.py -v
 """
 
 import logging
@@ -27,8 +27,8 @@ import pytest
 
 log = logging.getLogger("echo.test.restart")
 
-REPO_ROOT       = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-NF_DIR          = os.path.join(REPO_ROOT, "echo-nextflow")
+REPO_ROOT       = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+NF_DIR          = REPO_ROOT
 OUTDIR_BASE     = os.path.join(NF_DIR, "nextflow_test")
 OUTDIR_RESTART  = os.path.join(NF_DIR, "nextflow_test_restart")
 
@@ -56,7 +56,7 @@ def base_outdir():
     if not os.path.isdir(OUTDIR_BASE):
         pytest.skip(
             "nextflow_test/ not found — run the standard pipeline first:\n"
-            "  cd echo-nextflow && ./nextflow run main.nf -params-file test/params.test.yaml"
+            "  ./nextflow run main.nf -params-file test/params.test.yaml"
         )
     log.info("base outdir: %s", OUTDIR_BASE)
     return OUTDIR_BASE
@@ -67,7 +67,7 @@ def restart_outdir(base_outdir):
     if not os.path.isdir(OUTDIR_RESTART):
         pytest.skip(
             "nextflow_test_restart/ not found — run the restart pipeline first:\n"
-            "  cd echo-nextflow && ./nextflow run main.nf -params-file test/params.test.restart.yaml"
+            "  ./nextflow run main.nf -params-file test/params.test.restart.yaml"
         )
     log.info("restart outdir: %s", OUTDIR_RESTART)
     return OUTDIR_RESTART

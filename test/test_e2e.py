@@ -35,20 +35,20 @@ Synthetic dataset properties (deterministic — fixed-seed sequences):
                + 1 singleton appended → 30 proteins in *_all_relatives.fa
 
 Generate test data:
-  python echo-nextflow/test/generate_smoke_data.py
+  python test/generate_smoke_data.py
 
 Run pipeline (once, or whenever test data changes):
-  cd echo-nextflow
+  cd repo root
   nextflow run workflows/echo.nf -params-file test/params.test.yaml
 
 Run this test against existing output (default nextflow_test/):
-  pytest echo-nextflow/test/test_e2e.py -v
+  pytest test/test_e2e.py -v
 
 Run this test against a specific output directory:
-  pytest echo-nextflow/test/test_e2e.py -v --outdir /path/to/your/run
+  pytest test/test_e2e.py -v --outdir /path/to/your/run
 
 Run this test AND execute the pipeline:
-  pytest echo-nextflow/test/test_e2e.py -v --run-pipeline
+  pytest test/test_e2e.py -v --run-pipeline
 """
 
 import logging
@@ -77,8 +77,8 @@ def _outdir_from_params(params_file: str) -> str:
 # Paths
 # ---------------------------------------------------------------------------
 
-REPO_ROOT              = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-NF_DIR                 = os.path.join(REPO_ROOT, "echo-nextflow")
+REPO_ROOT              = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+NF_DIR                 = REPO_ROOT
 PARAMS_FILE            = os.path.join(NF_DIR, "test", "params.test.yaml")
 PARAMS_FILE_NO_SINGLETONS = os.path.join(NF_DIR, "test", "params.test.no_singletons.yaml")
 OUTDIR                 = os.path.join(NF_DIR, "nextflow_test")
@@ -153,7 +153,7 @@ def outdir(request):
     if not os.path.isdir(OUTDIR):
         pytest.skip(
             f"Output directory not found: {OUTDIR}\n"
-            "Run the pipeline first:  cd echo-nextflow && "
+            "Run the pipeline first:  cd repo root && "
             "nextflow run workflows/echo.nf -params-file test/params.test.yaml"
         )
     return OUTDIR
@@ -431,7 +431,7 @@ def outdir_no_singletons(request):
     if not os.path.isdir(OUTDIR_NO_SINGLETONS):
         pytest.skip(
             f"Output directory not found: {OUTDIR_NO_SINGLETONS}\n"
-            "Run the pipeline first:  cd echo-nextflow && "
+            "Run the pipeline first:  cd repo root && "
             "nextflow run workflows/echo.nf -params-file test/params.test.no_singletons.yaml"
         )
     return OUTDIR_NO_SINGLETONS

@@ -1,11 +1,11 @@
 # ECHO Test Suite
 
-Tests live in `echo-nextflow/test/` and are split into two levels:
+Tests live in `test/` and are split into two levels:
 
 - **Unit tests** — run instantly with no pipeline, no MMseqs2, no NCBI DB required.
 - **Pipeline tests** — validate real Nextflow output; require a pipeline run first.
 
-All tests use pytest. Logs are written automatically to `echo-nextflow/test/logs/` at the
+All tests use pytest. Logs are written automatically to `test/logs/` at the
 end of every session (`info_<timestamp>.log` and `debug_<timestamp>.log`).
 
 ---
@@ -45,7 +45,7 @@ This downloads ~50 MB from the NCBI FTP and writes `taxa.sqlite` to `~/.etetoolk
 No pipeline required. Runs in a few seconds.
 
 ```bash
-pytest echo-nextflow/test/test_selection.py -v --log-cli-level=INFO
+pytest test/test_selection.py -v --log-cli-level=INFO
 ```
 
 **What is tested:**
@@ -68,7 +68,7 @@ Optional flag: `--cluster-id-mode random` assigns each protein a distinct cluste
 No pipeline required. Runs in a few seconds.
 
 ```bash
-pytest echo-nextflow/test/test_dedup.py -v --log-cli-level=INFO -k "not pipeline_dedup"
+pytest test/test_dedup.py -v --log-cli-level=INFO -k "not pipeline_dedup"
 ```
 
 **What is tested:**
@@ -89,8 +89,6 @@ Requires Nextflow, the NCBI taxonomy DB (see [Prerequisites](#prerequisites) abo
 **Step 1** — Run the standard pipeline (once, or whenever test data changes):
 
 ```bash
-cd echo-nextflow
-
 # On the cluster (Singularity + SLURM):
 ./nextflow run main.nf -params-file test/params.test.yaml -profile singularity,slurm
 ./nextflow run main.nf -params-file test/params.test.no_singletons.yaml -profile singularity,slurm
@@ -106,13 +104,13 @@ These produce `nextflow_test/` and `nextflow_test_no_singletons/` respectively.
 
 ```bash
 # Validate output in the default nextflow_test/ location:
-pytest echo-nextflow/test/test_e2e.py -v --log-cli-level=INFO
+pytest test/test_e2e.py -v --log-cli-level=INFO
 
 # Validate output in a specific directory:
-pytest echo-nextflow/test/test_e2e.py -v --log-cli-level=INFO --outdir /path/to/your/run
+pytest test/test_e2e.py -v --log-cli-level=INFO --outdir /path/to/your/run
 
 # Run the pipeline (using outdir from params.test.yaml) then validate:
-pytest echo-nextflow/test/test_e2e.py -v --log-cli-level=INFO --run-pipeline
+pytest test/test_e2e.py -v --log-cli-level=INFO --run-pipeline
 ```
 
 **What is tested:**
@@ -145,8 +143,6 @@ introduced into the input FASTAs:
 **Step 1** — Run the dedup pipeline:
 
 ```bash
-cd echo-nextflow
-
 # On the cluster (Singularity + SLURM):
 ./nextflow run main.nf -params-file test/params.test.dedup.yaml -profile singularity,slurm
 
@@ -159,7 +155,7 @@ This produces `nextflow_test_dedup/`.
 **Step 2** — Run the full dedup test file (unit + pipeline):
 
 ```bash
-pytest echo-nextflow/test/test_dedup.py -v --log-cli-level=INFO
+pytest test/test_dedup.py -v --log-cli-level=INFO
 ```
 
 **What is tested (pipeline section):**
@@ -184,8 +180,6 @@ pre-computed clusters from a previous full run, without repeating MMseqs2 cluste
 **Step 2** — Run the restart pipeline with a new query species (`schizosaccharomyces_pombe`):
 
 ```bash
-cd echo-nextflow
-
 # On the cluster (Singularity + SLURM):
 ./nextflow run main.nf -params-file test/params.test.restart.yaml -profile singularity,slurm
 
@@ -198,7 +192,7 @@ This produces `nextflow_test_restart/`.
 **Step 3** — Run the restart tests:
 
 ```bash
-pytest echo-nextflow/test/test_restart.py -v --log-cli-level=INFO
+pytest test/test_restart.py -v --log-cli-level=INFO
 ```
 
 **What is tested:**
@@ -220,14 +214,14 @@ Run all tests (unit tests pass immediately; pipeline tests skip gracefully if th
 output directory does not exist):
 
 ```bash
-pytest echo-nextflow/test/ -v --log-cli-level=INFO
+pytest test/ -v --log-cli-level=INFO
 ```
 
 ---
 
 ## Logs
 
-Every pytest session writes two log files to `echo-nextflow/test/logs/`:
+Every pytest session writes two log files to `test/logs/`:
 
 - `info_<timestamp>.log` — INFO-level summary (mirrors console output)
 - `debug_<timestamp>.log` — full DEBUG trace across all tests

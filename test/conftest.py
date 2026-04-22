@@ -4,12 +4,12 @@ conftest.py — pytest configuration for ECHO test suite.
 Logging
 -------
   Console : INFO level — summary lines only (set via --log-cli-level in main.py)
-  File    : two session-level files written to echo-nextflow/test/logs/:
+  File    : two session-level files written to test/logs/:
               info_<timestamp>.log  — INFO and above (mirrors console)
               debug_<timestamp>.log — full DEBUG trace for all tests
 
 To see console logs when running pytest directly:
-  pytest echo-nextflow/test/ -v --log-cli-level=INFO
+  pytest test/ -v --log-cli-level=INFO
 """
 
 import logging
@@ -65,7 +65,7 @@ def cluster_id_mode(request):
 @pytest.fixture(scope="session", autouse=True)
 def log_dir():
     """
-    Session-scoped: creates echo-nextflow/test/logs/ and attaches two FileHandlers
+    Session-scoped: creates test/logs/ and attaches two FileHandlers
     for the entire session:
       info_<timestamp>.log  — INFO and above (mirrors console output)
       debug_<timestamp>.log — full DEBUG trace across all tests

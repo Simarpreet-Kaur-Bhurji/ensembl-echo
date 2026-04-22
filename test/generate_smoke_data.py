@@ -18,7 +18,7 @@
 generate_smoke_data.py
 Generate synthetic input data for the ECHO end-to-end smoke test.
 
-Outputs (relative to this script's location, i.e. echo-nextflow/test/):
+Outputs (relative to this script's location, i.e. test/):
   data/input_fastas/
     saccharomyces_cerevisiae.fa
     schizosaccharomyces_pombe.fa
@@ -51,7 +51,7 @@ shares <10% identity with the family-5 base, so MMseqs2 never groups it.
 Tax IDs are real NCBI taxonomy IDs (fungi) so ete3/NCBITaxa can compute distances.
 
 Run:
-  python echo-nextflow/test/generate_smoke_data.py
+  python test/generate_smoke_data.py
 """
 
 import csv
@@ -200,7 +200,6 @@ def main() -> None:
     print("  6 multi-member clusters (one per family, 6 proteins each).")
     print("  1 singleton: asp05 (aspergillus_niger, family 5).")
     print("\nRun the pipeline with:")
-    print("  cd echo-nextflow")
     print("  nextflow run workflows/echo.nf -params-file test/params.test.yaml")
 
 

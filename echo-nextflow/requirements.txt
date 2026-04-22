@@ -1,7 +1,0 @@
-pandas
-numpy
-matplotlib
-duckdb
-ete3
-biopython
-pyarrow

@@ -9,7 +9,7 @@ Tests the three cases the reviewer specified:
   c) empty chunk (no ranked taxa match) → empty FASTA and valid manifest written
 
 Run with:
-  pytest echo-nextflow/test/test_selection.py -v
+  pytest test/test_selection.py -v
 """
 
 import logging

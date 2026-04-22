@@ -64,7 +64,56 @@ Pull the image and use `-profile docker,local`:
 docker pull ghcr.io/simarpreet-kaur-bhurji/echo-container:latest
 ```
 
-### 3) NCBI Taxonomy database
+> **Note (macOS Apple Silicon / ARM64):** Local Docker testing is not fully supported on
+> macOS ARM64. MMseqs2's `linux/arm64` binary does not include all process modes available
+> in the AVX2 x86-64 build, causing certain pipeline steps to fail. Use the Singularity
+> image on an x86-64 cluster for production runs.
+
+### 3) Running without a container (pyenv)
+
+If you cannot or do not want to use Docker/Singularity, install dependencies into a
+pyenv virtual environment and run the pipeline with the `slurm` profile (which has no
+container directive and uses whatever Python and `mmseqs` are on `PATH`).
+
+```bash
+# Install pyenv if not already available
+curl https://pyenv.run | bash
+
+# Add to your shell profile (~/.bashrc or ~/.zshrc), then restart your shell:
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+
+# Install Python 3.10 (matches the container)
+pyenv install 3.10.14
+pyenv local 3.10.14
+
+# Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Download the NCBI Taxonomy database (one-time)
+python -c "from ete3 import NCBITaxa; NCBITaxa()"
+```
+
+Install MMseqs2 natively — download the pre-built binary for your platform from
+the [MMseqs2 releases page](https://github.com/soedinglab/MMseqs2#installation) and
+ensure `mmseqs` is on your `PATH`.
+
+Run on the cluster without a container:
+
+```bash
+time nextflow run main.nf \
+  -profile slurm \
+  -params-file params.yaml \
+  -with-report \
+  -resume
+```
+
+### 4) NCBI Taxonomy database
 
 The taxonomy-ranking step requires a local copy of the NCBI Taxonomy database managed by [ete3](https://etetoolkit.org/).
 
@@ -386,13 +435,13 @@ Unit tests run without Nextflow or MMseqs2. From the repository root:
 pip install pytest pandas duckdb
 
 # Selection logic unit tests
-pytest echo-nextflow/test/test_selection.py -v --log-cli-level=INFO
+pytest test/test_selection.py -v --log-cli-level=INFO
 
 # Deduplication unit tests
-pytest echo-nextflow/test/test_dedup.py -v --log-cli-level=INFO -k "not pipeline_dedup"
+pytest test/test_dedup.py -v --log-cli-level=INFO -k "not pipeline_dedup"
 ```
 
-Pipeline-level tests (end-to-end, dedup pipeline, restart mode) require a completed Nextflow run first. See [echo-nextflow/test/README.md](echo-nextflow/test/README.md) for step-by-step instructions.
+Pipeline-level tests (end-to-end, dedup pipeline, restart mode) require a completed Nextflow run first. See [test/README.md](test/README.md) for step-by-step instructions.
 
 ---
 

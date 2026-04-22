@@ -4,19 +4,19 @@ main.py — test runner entry point for the ECHO pipeline test suite.
 
 Usage examples:
   # Run all tests
-  python echo-nextflow/test/main.py
+  python test/main.py
 
   # Run a specific test file
-  python echo-nextflow/test/main.py --test test_selection
+  python test/main.py --test test_selection
 
   # Run a specific test function
-  python echo-nextflow/test/main.py --test test_selection::test_more_taxa_than_n_selects_exactly_n
+  python test/main.py --test test_selection::test_more_taxa_than_n_selects_exactly_n
 
   # Run with extra pytest flags (e.g. stop on first failure)
-  python echo-nextflow/test/main.py --test test_smoke -x
+  python test/main.py --test test_smoke -x
 
   # Run quietly (no verbose)
-  python echo-nextflow/test/main.py --verbose false
+  python test/main.py --verbose false
 """
 
 import argparse
