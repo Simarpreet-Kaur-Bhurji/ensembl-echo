@@ -56,9 +56,9 @@ def dedup_fasta(in_paths, out_path, dedup_sequences=False):
         out.write(f">{header}\n" + "\n".join(seq_lines) + "\n")
         written += 1
 
-    with open(out_path, "w") as out:
+    with open(out_path, "w", encoding="utf-8") as out:
         for in_path in in_paths:
-            with open(in_path) as fh:
+            with open(in_path, encoding="utf-8") as fh:
                 header = None
                 seq_lines = []
                 for line in fh:
@@ -77,7 +77,7 @@ def dedup_fasta(in_paths, out_path, dedup_sequences=False):
           f"header_dups_removed: {header_dups}  seq_dups_removed: {seq_dups}")
 
     if dedup_sequences and report_rows:
-        with open("dedup_report.tsv", "w") as rf:
+        with open("dedup_report.tsv", "w", encoding="utf-8") as rf:
             rf.write("dropped_header\tkept_header\tsequence_length\n")
             for dropped, kept, length in report_rows:
                 rf.write(f"{dropped}\t{kept}\t{length}\n")

@@ -205,7 +205,7 @@ def annotate_clusters(con, clusters_table):
     return con.execute(query).fetchdf()
 
 
-def process_clusters(output_dir, num_relatives, with_singletons):
+def process_clusters(output_dir, with_singletons):
     """
     Annotate clusters, write singleton side outputs, and return all multi-member
     clusters eligible for the relatives search.
@@ -215,8 +215,7 @@ def process_clusters(output_dir, num_relatives, with_singletons):
       - discarded_singletons.fa / singleton_cluster_summary.tsv
 
     Returns:
-        DataFrame: all clusters with cluster_size > 1 (SQL caps selection at
-        LEAST(unique_tax_ids, num_relatives) per cluster)
+        DataFrame: all clusters with cluster_size > 1
     """
     parquet_files = glob.glob(os.path.join(output_dir, "clusters*.parquet"))
     if not parquet_files:

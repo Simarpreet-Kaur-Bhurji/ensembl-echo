@@ -63,8 +63,7 @@ def main():
     print(f"[echo_process_clusters] with_singletons:  {args.with_singletons}")
 
     # process_clusters reads clusters*.parquet from CWD (Nextflow work dir)
-    remaining_df = process_clusters(output_dir=".", num_relatives=args.num_rel,
-                                    with_singletons=args.with_singletons)
+    remaining_df = process_clusters(output_dir=".", with_singletons=args.with_singletons)
 
     # write remaining clusters as an explicit Nextflow output file
     # use duckdb (already a pipeline dependency) to avoid requiring pyarrow

@@ -345,7 +345,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--clusters_parquet", required=True)
     ap.add_argument("--remaining_clusters_parquet", required=True)
-    ap.add_argument("--manifest_tsvs", nargs="+", required=True)  # all per-query manifests; replaces single closest_log_tsv; concat'd to get all distances
+    ap.add_argument("--manifest_tsvs", nargs="+", required=True)  # per-query manifests
     ap.add_argument("--input_fasta", required=True)
     ap.add_argument("--cluster_summary_txt")
     ap.add_argument("--pipeline_summary_txt")

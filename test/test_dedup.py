@@ -53,19 +53,19 @@ REAL_SEQ_NEU02 = "FEQCWSWEEDIIAMSGSWRTHIYGRMDGETSDPCSCQCWHTAACFTRGPRKLQLH"
 
 def write_fasta(path, records):
     """records: list of (header, sequence)"""
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8") as fh:
         for header, seq in records:
             fh.write(f">{header}\n{seq}\n")
 
 
 def read_fasta_headers(path):
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         return [line[1:].strip() for line in fh if line.startswith(">")]
 
 
 def read_fasta_sequences(path):
     headers, seqs, cur_seq = [], [], []
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
             if line.startswith(">"):
@@ -85,7 +85,7 @@ def run_dedup(tmp_path, inputs, extra_args=None):
     cmd = [sys.executable, SCRIPT, "--inputs"] + [str(i) for i in inputs] + ["--output", str(out)]
     if extra_args:
         cmd += extra_args
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(tmp_path))
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(tmp_path), check=False)
     assert result.returncode == 0, f"Script failed:\n{result.stderr}\n{result.stdout}"
     return out, result.stdout
 
@@ -406,7 +406,7 @@ _EXPECTED_SEQS = 28
 def dedup_outdir():
     if not _os.path.isdir(_DEDUP_DIR):
         pytest.skip(
-            f"nextflow_test_dedup/ not found — run the pipeline first:\n"
+            "nextflow_test_dedup/ not found — run the pipeline first:\n"
             "  nextflow run workflows/echo.nf -params-file test/params.test.dedup.yaml"
         )
     _log.info("dedup outdir: %s", _DEDUP_DIR)
@@ -445,7 +445,7 @@ def test_pipeline_dedup_output_is_clean(dedup_outdir, query_name, tmp_path):
     _log.debug("re-running dedup on %s -> %s", in_fa, out_fa)
     result = subprocess.run(
         [sys.executable, SCRIPT, "--inputs", in_fa, "--output", str(out_fa), "--dedup_sequences"],
-        capture_output=True, text=True, cwd=str(tmp_path),
+        capture_output=True, text=True, cwd=str(tmp_path), check=False,
     )
     _log.debug("re-dedup stdout: %s", result.stdout.strip())
     assert result.returncode == 0, result.stderr

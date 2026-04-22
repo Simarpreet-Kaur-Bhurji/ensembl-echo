@@ -42,7 +42,7 @@ def main():
     ap.add_argument("--query_name", required=True)
     ap.add_argument("--num_of_rel", type=int, required=True)
     ap.add_argument("--out_fasta", required=True)
-    ap.add_argument("--out_manifest", required=True)  # replaces --out_log; flat per-protein manifest instead of per-cluster list rows
+    ap.add_argument("--out_manifest", required=True)  # flat per-protein manifest
     args = ap.parse_args()
 
     qtid = int(args.query_tax_id)
@@ -99,7 +99,7 @@ def main():
       )
       SELECT
         Cluster_ID, header, tax_id, distance, seq_len, sequence,
-        rn_cluster, cluster_unique_tax_ids  -- exposed so manifest rows carry selection rank and diversity count
+        rn_cluster, cluster_unique_tax_ids  -- selection rank and diversity count
       FROM topn
       WHERE rn_cluster <= LEAST(cluster_unique_tax_ids, {nrel})
       ORDER BY Cluster_ID, distance ASC, seq_len DESC, tax_id ASC
@@ -108,7 +108,8 @@ def main():
 
     # always create outputs (even if empty)
     if selected.empty:
-        open(args.out_fasta, "w", encoding="utf-8").close()
+        with open(args.out_fasta, "w", encoding="utf-8"):
+            pass
         # write empty manifest with correct columns so downstream concat always has a header
         pd.DataFrame(columns=[
             "query_tax_id", "query_name", "cluster_id", "protein_header",

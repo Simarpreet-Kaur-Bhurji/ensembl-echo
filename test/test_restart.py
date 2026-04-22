@@ -86,7 +86,8 @@ def test_new_query_all_relatives_fasta_exists(restart_outdir):
 
 def test_new_query_all_relatives_fasta_nonempty(restart_outdir):
     path = os.path.join(restart_outdir, f"{NEW_QUERY}_all_relatives.fa")
-    seqs = [l for l in open(path) if l.startswith(">")]
+    with open(path, encoding="utf-8") as fh:
+        seqs = [l for l in fh if l.startswith(">")]
     log.debug("%s_all_relatives.fa: %d sequences", NEW_QUERY, len(seqs))
     assert len(seqs) > 0, f"{NEW_QUERY}_all_relatives.fa is empty"
     log.info("PASS: %s_all_relatives.fa has %d sequences", NEW_QUERY, len(seqs))
@@ -118,7 +119,8 @@ def test_new_query_manifest_row_count_matches_fasta(restart_outdir):
     """Every sequence in the FASTA has a row in the manifest."""
     fa_path  = os.path.join(restart_outdir, f"{NEW_QUERY}_all_relatives.fa")
     tsv_path = os.path.join(restart_outdir, f"{NEW_QUERY}_manifest.tsv")
-    n_seqs   = sum(1 for l in open(fa_path) if l.startswith(">"))
+    with open(fa_path, encoding="utf-8") as fh:
+        n_seqs = sum(1 for l in fh if l.startswith(">"))
     n_rows   = len(pd.read_csv(tsv_path, sep="\t"))
     log.debug("FASTA sequences: %d  manifest rows: %d", n_seqs, n_rows)
     assert n_rows == n_seqs, f"Manifest rows ({n_rows}) != FASTA sequences ({n_seqs})"

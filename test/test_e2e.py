@@ -54,8 +54,6 @@ Run this test AND execute the pipeline:
 import logging
 import os
 import subprocess
-import sys
-
 import duckdb
 import pandas as pd
 import pytest
@@ -141,14 +139,14 @@ def outdir(request):
             cwd=NF_DIR,
             capture_output=False,   # stream output so progress is visible
             text=True,
+            check=False,
         )
         assert result.returncode == 0, "Nextflow pipeline failed — check output above"
         log.info("Pipeline complete.")
         resolved = _outdir_from_params(PARAMS_FILE)
         log.info("Output directory (from params): %s", resolved)
         return resolved
-    else:
-        log.info("Skipping pipeline execution (pass --run-pipeline to run it).")
+    log.info("Skipping pipeline execution (pass --run-pipeline to run it).")
 
     if not os.path.isdir(OUTDIR):
         pytest.skip(
@@ -295,7 +293,7 @@ class TestPerQueryOutputs:
             f"{query_name}: {len(over_limit)} rows have selection_rank > {NUM_OF_REL}"
 
     @pytest.mark.parametrize("query_name,query_tax_id", QUERY_SPECIES.items())
-    def test_manifest_query_tax_id_consistent(self, outdir, query_name, query_tax_id):
+    def test_manifestquery_tax_id_consistent(self, outdir, query_name, query_tax_id):
         """All rows in the manifest must carry the correct query_tax_id."""
         path = os.path.join(outdir, f"{query_name}_manifest.tsv")
         df = pd.read_csv(path, sep="\t")
@@ -336,14 +334,16 @@ class TestSummaryReports:
         log.info("PASS: cluster_summary.txt found")
 
     def test_cluster_summary_total_clusters(self, outdir):
-        text = open(os.path.join(outdir, "cluster_summary.txt")).read()
+        with open(os.path.join(outdir, "cluster_summary.txt"), encoding="utf-8") as fh:
+            text = fh.read()
         expected = f"Total number of clusters obtained from input fasta: {TOTAL_CLUSTERS}"
         log.debug("looking for: %r", expected)
         assert expected in text, f"Expected line not found in cluster_summary.txt:\n  {expected}"
         log.info("PASS: cluster_summary total_clusters=%d confirmed", TOTAL_CLUSTERS)
 
     def test_cluster_summary_singleton_count(self, outdir):
-        text = open(os.path.join(outdir, "cluster_summary.txt")).read()
+        with open(os.path.join(outdir, "cluster_summary.txt"), encoding="utf-8") as fh:
+            text = fh.read()
         expected = f"Singleton clusters (clusters with only one protein): {SINGLETON_COUNT}"
         log.debug("looking for: %r", expected)
         assert expected in text
@@ -356,7 +356,8 @@ class TestSummaryReports:
         log.info("PASS: echo_pipeline_summary.txt found")
 
     def test_pipeline_summary_total_sequences(self, outdir):
-        text = open(os.path.join(outdir, "echo_pipeline_summary.txt")).read()
+        with open(os.path.join(outdir, "echo_pipeline_summary.txt"), encoding="utf-8") as fh:
+            text = fh.read()
         expected = f"Total sequences in input FASTA: {TOTAL_INPUT_PROTEINS}"
         log.debug("looking for: %r", expected)
         assert expected in text, \
@@ -364,7 +365,8 @@ class TestSummaryReports:
         log.info("PASS: pipeline_summary total_sequences=%d confirmed", TOTAL_INPUT_PROTEINS)
 
     def test_pipeline_summary_both_queries_present(self, outdir):
-        text = open(os.path.join(outdir, "echo_pipeline_summary.txt")).read()
+        with open(os.path.join(outdir, "echo_pipeline_summary.txt"), encoding="utf-8") as fh:
+            text = fh.read()
         for query_name in QUERY_SPECIES:
             log.debug("checking query '%s' mentioned in pipeline summary", query_name)
             assert query_name in text, \
@@ -422,6 +424,7 @@ def outdir_no_singletons(request):
             cwd=NF_DIR,
             capture_output=False,
             text=True,
+            check=False,
         )
         assert result.returncode == 0, "Nextflow no-singletons pipeline failed"
         log.info("Pipeline (no-singletons) complete.")

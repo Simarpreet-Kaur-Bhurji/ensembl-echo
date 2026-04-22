@@ -1,0 +1,34 @@
+[FORMAT]
+max-line-length = 110
+
+[BASIC]
+# Short names common in matplotlib/data-science are legitimate
+good-names = ax, x, y, f, df, fh, n, v, s, p, q, ap, st, ut, xb, yb, hx, pi, x0, y0, fa, k, i, ncbi, rf, h, r
+
+[DESIGN]
+# Relax defaults slightly for scientific code
+max-locals = 22
+max-args = 7
+max-branches = 15
+
+[EXCEPTIONS]
+# ete3 and pysam are C extensions — suppress false import errors
+extension-pkg-allow-list = ete3, pysam, math
+
+[MESSAGES CONTROL]
+disable =
+    global-statement,              # ncbi module-level pattern is intentional
+    duplicate-code,                # cross-file similarity is expected in a pipeline
+    missing-module-docstring,      # not all scripts need a module docstring
+    missing-function-docstring,    # internal helpers don't always need docstrings
+    wrong-import-position,         # matplotlib.use("Agg") must sit between imports
+    too-many-nested-blocks,        # data-processing loops are inherently nested
+    broad-exception-caught,        # lineage lookup errors are caught intentionally
+    redefined-outer-name,          # pytest fixtures intentionally reuse fixture names as args
+    reimported,                    # aliased re-imports (e.g. _os, _logging) are intentional
+    import-outside-toplevel,       # conditional/deferred imports used in test helpers
+    wrong-import-order,            # aliased stdlib re-imports land after third-party; intentional
+    ungrouped-imports,             # same reason as wrong-import-order
+    missing-class-docstring,       # test classes don't need docstrings
+    unused-argument                # pytest hooks/fixtures/parametrize constrain argument names
+

@@ -80,14 +80,14 @@ def run_chunk_script(work_dir, chunk_parquet, ranked_taxa, num_of_rel):
             "--out_fasta",       str(out_fasta),
             "--out_manifest",    str(out_manifest),
         ],
-        capture_output=True, text=True
+        capture_output=True, text=True, check=False,
     )
-    assert result.returncode == 0, f"Script failed:\num_relatives{result.stderr}"
+    assert result.returncode == 0, f"Script failed:\n{result.stderr}"
     return out_fasta, out_manifest
 
 
 def count_fasta_headers(fasta_path):
-    with open(fasta_path) as fh:
+    with open(fasta_path, encoding="utf-8") as fh:
         return sum(1 for line in fh if line.startswith(">"))
 
 
@@ -138,7 +138,8 @@ def _run_taxa_selection(log_dir, cluster_id_mode, num_relatives, num_tax_id_per_
     Delegates data creation to _make_selection_data, runs the selection script,
     and asserts that exactly expected_count tax_ids are selected and ascending selection ranks.
     """
-    work_dir = _test_dir(log_dir, f"{test_label}_n{num_relatives}_tax_ids{num_tax_id_per_cluster}_clusterid{cluster_id_mode}")
+    label = f"{test_label}_n{num_relatives}_tax_ids{num_tax_id_per_cluster}_clusterid{cluster_id_mode}"
+    work_dir = _test_dir(log_dir, label)
 
     chunk_parquet, ranked_taxa, ranked_pairs = _make_selection_data(
         work_dir, cluster_id_mode, num_tax_id_per_cluster
@@ -201,7 +202,7 @@ def test_fewer_taxa_than_n_retains_all_parametrized(log_dir, cluster_id_mode,
                         num_relatives, num_tax_id_per_cluster,
                         expected_count=num_tax_id_per_cluster,
                         test_label="test_fewer_taxa")
-    
+
 # cluster with equal taxa as N → all taxa retained
 @pytest.mark.parametrize("num_relatives,num_tax_id_per_cluster",
     [(n,n) for n in range(2, 7)]
@@ -266,8 +267,10 @@ def test_no_matching_taxa_produces_empty_outputs(tmp_path):
         # distance decides — two taxa, same seq_len, different distances
         # N=1; tax 301 (dist 5) beats tax 302 (dist 15)
         [
-            {"Cluster_ID": "Cluster_1", "header": "prot_a", "tax_id": 301, "sequence": "A" * 15, "seq_len": 15},
-            {"Cluster_ID": "Cluster_1", "header": "prot_b", "tax_id": 302, "sequence": "B" * 15, "seq_len": 15},
+            {"Cluster_ID": "Cluster_1", "header": "prot_a",
+             "tax_id": 301, "sequence": "A" * 15, "seq_len": 15},
+            {"Cluster_ID": "Cluster_1", "header": "prot_b",
+             "tax_id": 302, "sequence": "B" * 15, "seq_len": 15},
         ],
         [(301, 5), (302, 15)],
         1,
@@ -278,8 +281,10 @@ def test_no_matching_taxa_produces_empty_outputs(tmp_path):
         # seq_len decides between taxa — same distance, different seq_len
         # N=1; tax 302 (len 25) beats tax 301 (len 15) since both at dist 5
         [
-            {"Cluster_ID": "Cluster_1", "header": "prot_a", "tax_id": 301, "sequence": "A" * 15, "seq_len": 15},
-            {"Cluster_ID": "Cluster_1", "header": "prot_b", "tax_id": 302, "sequence": "B" * 25, "seq_len": 25},
+            {"Cluster_ID": "Cluster_1", "header": "prot_a",
+             "tax_id": 301, "sequence": "A" * 15, "seq_len": 15},
+            {"Cluster_ID": "Cluster_1", "header": "prot_b",
+             "tax_id": 302, "sequence": "B" * 25, "seq_len": 25},
         ],
         [(301, 5), (302, 5)],
         1,
@@ -290,8 +295,10 @@ def test_no_matching_taxa_produces_empty_outputs(tmp_path):
         # tax_id decides — same distance, same seq_len across taxa
         # N=1; tax 301 beats tax 302 because 301 < 302 (tax_id ASC tiebreaker)
         [
-            {"Cluster_ID": "Cluster_1", "header": "prot_a", "tax_id": 301, "sequence": "A" * 15, "seq_len": 15},
-            {"Cluster_ID": "Cluster_1", "header": "prot_b", "tax_id": 302, "sequence": "B" * 15, "seq_len": 15},
+            {"Cluster_ID": "Cluster_1", "header": "prot_a",
+             "tax_id": 301, "sequence": "A" * 15, "seq_len": 15},
+            {"Cluster_ID": "Cluster_1", "header": "prot_b",
+             "tax_id": 302, "sequence": "B" * 15, "seq_len": 15},
         ],
         [(301, 5), (302, 5)],
         2,
@@ -302,10 +309,14 @@ def test_no_matching_taxa_produces_empty_outputs(tmp_path):
         # seq_len decides within a taxon — tax 301 has 3 proteins, best (len 15) is prot_a
         # tax 302 also present; both at same distance; N=2 so both taxa are selected
         [
-            {"Cluster_ID": "Cluster_1", "header": "prot_a",  "tax_id": 301, "sequence": "A" * 15, "seq_len": 15},
-            {"Cluster_ID": "Cluster_1", "header": "prot_a1", "tax_id": 301, "sequence": "A" * 12, "seq_len": 12},
-            {"Cluster_ID": "Cluster_1", "header": "prot_b1", "tax_id": 301, "sequence": "B" * 12, "seq_len": 12},
-            {"Cluster_ID": "Cluster_1", "header": "prot_b",  "tax_id": 302, "sequence": "B" * 25, "seq_len": 25},
+            {"Cluster_ID": "Cluster_1", "header": "prot_a",
+             "tax_id": 301, "sequence": "A" * 15, "seq_len": 15},
+            {"Cluster_ID": "Cluster_1", "header": "prot_a1",
+             "tax_id": 301, "sequence": "A" * 12, "seq_len": 12},
+            {"Cluster_ID": "Cluster_1", "header": "prot_b1",
+             "tax_id": 301, "sequence": "B" * 12, "seq_len": 12},
+            {"Cluster_ID": "Cluster_1", "header": "prot_b",
+             "tax_id": 302, "sequence": "B" * 25, "seq_len": 25},
         ],
         [(301, 5), (302, 5)],
         2,
@@ -316,8 +327,10 @@ def test_no_matching_taxa_produces_empty_outputs(tmp_path):
         # first row decides — one taxon, two proteins, distance and seq_len both tied
         # prot_a (inserted first) beats prot_b
         [
-            {"Cluster_ID": "Cluster_1", "header": "prot_a", "tax_id": 301, "sequence": "A" * 12, "seq_len": 12},
-            {"Cluster_ID": "Cluster_1", "header": "prot_b", "tax_id": 301, "sequence": "B" * 12, "seq_len": 12},
+            {"Cluster_ID": "Cluster_1", "header": "prot_a",
+             "tax_id": 301, "sequence": "A" * 12, "seq_len": 12},
+            {"Cluster_ID": "Cluster_1", "header": "prot_b",
+             "tax_id": 301, "sequence": "B" * 12, "seq_len": 12},
         ],
         [(301, 5)],
         5,
