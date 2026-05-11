@@ -46,7 +46,7 @@ workflow ECHO {
     def singletons_fa_file  = file("${base}/discarded_singletons.fa")
     def singletons_tsv_file = file("${base}/singleton_cluster_summary.tsv")
 
-    if (singletons_fa_file.exists() && singletons_tsv_file.exists()) {
+    if (singletons_fa_file.exists() && singletons_tsv_file.exists() && !params.with_singletons) {
       singletons_fa       = channel.value(singletons_fa_file)
       singletons_summary  = channel.value(singletons_tsv_file)
       singletons_manifest = channel.empty()
@@ -173,9 +173,13 @@ workflow ECHO {
       tuple(qname, fa)
     }
     .combine(singletons_fa)
-    .map { it ->
-      tuple(it[0], it[1], it[2])
-    }
+    .map { it -> tuple(it[0], it[1], it[2]) }
+    .join(
+      merged_manifests.query_manifest.map { tsv ->
+        def qname = tsv.baseName.replaceFirst(/_manifest$/, '')
+        tuple(qname, tsv)
+      }
+    )
 
   all_rel = MAKE_ALL_RELATIVES(all_inputs)
 
@@ -194,7 +198,7 @@ workflow ECHO {
   diagnostics = MAKE_DIAGNOSTICS(
     clusters_parquet,
     remaining_clusters,
-    merged_manifests.query_manifest.collect(),  // all per-query manifests collected; diagnostics reads distances from them directly instead of a separate combined log
+    all_rel.query_manifest.collect(),  // all per-query manifests collected; diagnostics reads distances from them directly instead of a separate combined log
     combined_fasta,
     reports.cluster_summary,
     reports.pipeline_summary
@@ -204,7 +208,7 @@ workflow ECHO {
     clusters_parquet          = clusters_parquet
     remaining_clusters        = remaining_clusters
     ranked_taxa_tsv           = ranked.ranked_taxa_tsv
-    query_manifests           = merged_manifests.query_manifest  // per-query provenance TSVs; handoff contract for Genebuild
+    query_manifests           = all_rel.query_manifest  // per-query provenance TSVs; handoff contract for Genebuild
     relatives_fastas          = merged_fastas.relatives_fa
     all_relatives_fa          = all_rel.all_relatives_fa
     cluster_summary_txt       = reports.cluster_summary

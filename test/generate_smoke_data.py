@@ -48,6 +48,12 @@ Expected clustering result: 7 clusters — 6 multi-member (one per family, 6 pro
 + 1 singleton (aspergillus_niger family 5, asp05) whose sequence is fully random and
 shares <10% identity with the family-5 base, so MMseqs2 never groups it.
 
+Deliberate sequence duplicates (for dedup smoke test):
+  sch03 ≡ neu03  (schizosaccharomyces_pombe family 3 == neurospora_crassa family 3)
+  asp02 ≡ yar02  (aspergillus_niger family 2 == yarrowia_lipolytica family 2)
+These appear as relative pairs within separate query outputs so that
+params.test.dedup.yaml (dedup_sequences=true) removes exactly 2 sequences.
+
 Tax IDs are real NCBI taxonomy IDs (fungi) so ete3/NCBITaxa can compute distances.
 
 Run:
@@ -93,6 +99,13 @@ QUERIES = [
 ]
 
 N_FAMILIES = 6
+
+# Deliberate sequence duplicates: (dst_sps_idx, dst_fam_idx) -> (src_sps_idx, src_fam_idx)
+# dst protein gets the identical sequence as src protein, enabling the dedup smoke test.
+DUPLICATES = {
+    (1, 2): (3, 2),  # sch03 ≡ neu03
+    (2, 1): (5, 1),  # asp02 ≡ yar02
+}
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +183,9 @@ def main() -> None:
             # asp05: aspergillus_niger (sps_idx=2), family 5 (fam_idx=4) is the singleton
             if sps_idx == 2 and fam_idx == 4:
                 seq = make_singleton(fam_idx)
+            elif (sps_idx, fam_idx) in DUPLICATES:
+                src_sps, src_fam = DUPLICATES[(sps_idx, fam_idx)]
+                seq = make_variant(bases[src_fam], src_sps, src_fam)
             else:
                 seq = make_variant(bases[fam_idx], sps_idx, fam_idx)
             records.append((f"{prefix}{fam_idx + 1:02d}", seq))
@@ -199,6 +215,10 @@ def main() -> None:
     print("\nExpected clustering outcome: 7 clusters.")
     print("  6 multi-member clusters (one per family, 6 proteins each).")
     print("  1 singleton: asp05 (aspergillus_niger, family 5).")
+    print("\nDeliberate sequence duplicates introduced:")
+    print("  sch03 ≡ neu03  (schizosaccharomyces_pombe fam3 == neurospora_crassa fam3)")
+    print("  asp02 ≡ yar02  (aspergillus_niger fam2 == yarrowia_lipolytica fam2)")
+    print("  With dedup_sequences=true, 2 sequences are removed from the final FASTAs.")
     print("\nRun the pipeline with:")
     print("  nextflow run workflows/echo.nf -params-file test/params.test.yaml")
 

@@ -195,7 +195,7 @@ Each query species produces its own `*_all_relatives.fa` and `*_manifest.tsv` in
 
 **Sequence deduplication (`dedup_sequences`):**
 - `dedup_sequences: false` *(default)* — no sequence-level deduplication. Duplicate headers are always removed (first occurrence kept).
-- `dedup_sequences: true` — after merging relatives, sequences that are identical across different headers are deduplicated. The first occurrence is kept. A `dedup_report.tsv` is published to `outdir` listing every dropped/kept pair with its sequence length. Enable this when input FASTAs may contain identical proteins from different species or assemblies.
+- `dedup_sequences: true` — after merging relatives, sequences that are identical across different headers are deduplicated. The first occurrence is kept. A `dedup_report.tsv` is published to `outdir` listing every dropped/kept pair with its sequence length. Dropped proteins are also marked `selection_source=dropped_duplicate` in the per-query manifest, preserving full provenance. Enable this when input FASTAs may contain identical proteins from different species or assemblies.
 
 **FASTA output:**
 - `fasta_line_width` – characters per sequence line in `combined_input_fasta.fa` (default: `60`). Standard FASTA is 60 or 80; adjust if downstream tools require a specific wrap length.
@@ -362,9 +362,10 @@ Depends on `with_singletons`:
 
 | File | `with_singletons: true` | `with_singletons: false` |
 |------|------------------------|--------------------------|
-| `singleton_manifest.tsv` | Written — one row per singleton protein | Not written |
-| `discarded_singletons.fa` | Not written | Written — singleton sequences excluded from query outputs |
+| `discarded_singletons.fa` | Not written — singletons are included in per-query `*_all_relatives.fa` | Written — singleton sequences excluded from query outputs |
 | `singleton_cluster_summary.tsv` | Not written | Written — summary table of discarded singleton clusters |
+
+When `with_singletons: true`, singletons are appended to each per-query `*_all_relatives.fa` and recorded in `*_manifest.tsv` with `selection_source=singleton`.
 
 ### Per-query outputs
 For each query species, two files are produced:
@@ -386,9 +387,9 @@ Provenance handoff file for Genebuild. One row per selected relative with the fo
 | `selection_rank` | Rank of this relative within its cluster (1 = closest) |
 | `cluster_size` | Total number of proteins in the cluster |
 | `unique_tax_ids` | Number of distinct taxa in the cluster |
-| `selection_source` | `ranked_cluster` or `singleton` |
+| `selection_source` | `ranked_cluster`, `singleton`, or `dropped_duplicate` (sequence-deduplicated when `dedup_sequences=true`) |
 
-Row count in the manifest always matches the sequence count in the corresponding FASTA.
+The manifest is a complete provenance record of all selected proteins. When `dedup_sequences=true`, proteins whose sequences are identical to an already-selected protein are removed from the FASTA but retained in the manifest with `selection_source=dropped_duplicate`. Use `dedup_report.tsv` to trace which header each duplicate matched.
 
 ### Deduplication output
 | File | When present |

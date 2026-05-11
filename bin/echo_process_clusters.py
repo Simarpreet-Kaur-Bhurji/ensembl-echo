@@ -17,16 +17,16 @@
 """
 echo_process_clusters.py  –  ECHO pipeline step 4 (P4)
 
-Annotates clusters with cluster_size and unique_tax_ids, writes singleton and
-few-taxid side outputs, and emits remaining_clusters.parquet containing only
-the clusters eligible for the relatives search (multi-member, enough species).
+Annotates clusters with cluster_size and unique_tax_ids, separates singletons,
+and emits remaining_clusters.parquet containing all multi-member clusters
+eligible for the relatives search.
 
 Called by: modules/process_clusters.nf
 Expects:   clusters.parquet staged in the Nextflow work directory (output_dir='.')
 Writes to work dir:
   - remaining_clusters.parquet
-  - discarded_singletons.fa / singleton_cluster_summary.tsv
-  - clusters_with_fewer_tax_ids.fa / clusters_with_fewer_taxids_summary.tsv
+  - discarded_singletons.fa / singleton_cluster_summary.tsv (with_singletons=false)
+  - discarded_singletons.fa / singleton_manifest.tsv        (with_singletons=true)
 """
 import argparse
 
@@ -38,12 +38,6 @@ from generate_and_process_clusters import process_clusters
 def main():
     p = argparse.ArgumentParser(
         description="ECHO P4: annotate/filter clusters -> remaining_clusters.parquet"
-    )
-    p.add_argument(
-        "--num_rel",
-        type=int,
-        required=True,
-        help="Minimum unique tax_ids for a cluster to be eligible",
     )
     p.add_argument(
         "--out_remaining",
@@ -58,7 +52,6 @@ def main():
     )
     args = p.parse_args()
 
-    print(f"[echo_process_clusters] num_rel:          {args.num_rel}")
     print(f"[echo_process_clusters] out_remaining:    {args.out_remaining}")
     print(f"[echo_process_clusters] with_singletons:  {args.with_singletons}")
 

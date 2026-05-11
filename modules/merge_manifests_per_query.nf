@@ -6,7 +6,6 @@
  */
 process MERGE_MANIFESTS_PER_QUERY {
   tag { query_name }
-  publishDir params.outdir, mode: 'copy'
 
   input:
     tuple val(query_tax_id), val(query_name), path(manifest_parts), path(singleton_manifest)
