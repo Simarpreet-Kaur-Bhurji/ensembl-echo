@@ -466,8 +466,8 @@ def test_pipeline_dedup_report_exists(dedup_outdir):
 def test_pipeline_dedup_report_content(dedup_outdir):
     """
     dedup_report.tsv has exactly 2 rows — one per deliberate duplicate pair.
-    Pair 1: neu03 / sch03  (sequence_length = 51)
-    Pair 2: yar02 / asp02  (sequence_length = 61)
+    Pair 1: neu03 / sch03  (sequence_length = 48)
+    Pair 2: yar02 / asp02  (sequence_length = 60)
     """
     import pandas as pd
     report = _os.path.join(dedup_outdir, "dedup_report.tsv")
@@ -479,19 +479,19 @@ def test_pipeline_dedup_report_content(dedup_outdir):
 
     lengths = sorted(df["sequence_length"].tolist())
     _log.debug("dup sequence lengths (sorted): %s", lengths)
-    assert lengths == [51, 61], f"Unexpected sequence lengths: {lengths}"
+    assert lengths == [48, 60], f"Unexpected sequence lengths: {lengths}"
 
-    # Pair 1: neu03 / sch03 (len 51)
-    row51 = df[df["sequence_length"] == 51].iloc[0]
-    pair51 = {row51["dropped_header"].split("|")[0], row51["kept_header"].split("|")[0]}
-    _log.debug("len-51 pair: %s  (dropped=%s kept=%s)",
-               pair51, row51["dropped_header"], row51["kept_header"])
-    assert pair51 == {"neu03", "sch03"}, f"Unexpected pair for len-51 dup: {pair51}"
+    # Pair 1: neu03 / sch03 (len 48)
+    row48 = df[df["sequence_length"] == 48].iloc[0]
+    pair48 = {row48["dropped_header"].split("|")[0], row48["kept_header"].split("|")[0]}
+    _log.debug("len-48 pair: %s  (dropped=%s kept=%s)",
+               pair48, row48["dropped_header"], row48["kept_header"])
+    assert pair48 == {"neu03", "sch03"}, f"Unexpected pair for len-48 dup: {pair48}"
 
-    # Pair 2: yar02 / asp02 (len 61)
-    row61 = df[df["sequence_length"] == 61].iloc[0]
-    pair61 = {row61["dropped_header"].split("|")[0], row61["kept_header"].split("|")[0]}
-    _log.debug("len-61 pair: %s  (dropped=%s kept=%s)",
-               pair61, row61["dropped_header"], row61["kept_header"])
-    assert pair61 == {"yar02", "asp02"}, f"Unexpected pair for len-61 dup: {pair61}"
+    # Pair 2: yar02 / asp02 (len 60)
+    row60 = df[df["sequence_length"] == 60].iloc[0]
+    pair60 = {row60["dropped_header"].split("|")[0], row60["kept_header"].split("|")[0]}
+    _log.debug("len-60 pair: %s  (dropped=%s kept=%s)",
+               pair60, row60["dropped_header"], row60["kept_header"])
+    assert pair60 == {"yar02", "asp02"}, f"Unexpected pair for len-60 dup: {pair60}"
     _log.info("PASS: dedup_report.tsv has correct 2 pairs — (neu03,sch03) and (yar02,asp02)")

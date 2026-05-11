@@ -23,7 +23,8 @@ Header dedup always runs — first occurrence kept, input order preserved.
 Sequence dedup is off by default; when enabled, writes dedup_report.tsv
 listing every dropped header, which header it duplicated, and sequence length.
 
-The manifest is not affected — this is a FASTA-only post-processing step.
+Manifest handling is done downstream: when dedup_report.tsv is produced, the
+calling process marks dropped rows as selection_source=dropped_duplicate.
 """
 
 import argparse

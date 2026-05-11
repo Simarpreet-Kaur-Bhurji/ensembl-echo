@@ -30,7 +30,6 @@ process PROCESS_CLUSTERS {
   def with_singletons_flag = params.with_singletons ? "--with_singletons" : ""
   """
   echo_process_clusters.py \
-    --num_rel ${params.num_of_rel} \
     --out_remaining remaining_clusters.parquet \
     ${with_singletons_flag}
   """
